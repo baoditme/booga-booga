@@ -271,6 +271,9 @@ end)
 -- =============================================
 -- AUTO HEAL V1
 -- =============================================
+-- =============================================
+-- AUTO HEAL V1 (Remote mới: {0, 67, 24, 0})
+-- =============================================
 local autoHealToggle = CombatTab:CreateToggle("autoHealToggle", { Title = "❤️ Auto Heal (Bloodfruit - cực nhanh)", Default = false })
 local healRunning = false
 local healTask = nil
@@ -283,8 +286,9 @@ local function getByteNetRemote()
     return byteNetRemote
 end
 
+-- Buffer mới {0, 67, 24, 0}
 local function createHealBuffer()
-    local bytes = { 0, 67, 17, 0 }
+    local bytes = { 0, 67, 24, 0 }
     local b = buffer.create(#bytes)
     for i = 1, #bytes do
         buffer.writeu8(b, i - 1, bytes[i])
@@ -292,12 +296,13 @@ local function createHealBuffer()
     return b
 end
 
+-- Gửi heal với remote mới
 local function sendHeal()
     local event = getByteNetRemote()
     if not event then return false end
     local bufferData = createHealBuffer()
     pcall(function()
-        event:FireServer(bufferData, nil)
+        event:FireServer(bufferData, nil)  -- Vẫn giữ nil như code Cobalt
     end)
     return true
 end
@@ -364,7 +369,7 @@ autoHealToggle:OnChanged(function(v)
 end)
 
 -- =============================================
--- AUTO HEAL V2
+-- AUTO HEAL V2 (Remote mới: {0, 67, 24, 0})
 -- =============================================
 local autoHealV2Toggle = CombatTab:CreateToggle("autoHealV2Toggle", { Title = "❤️‍🔥 Auto Heal V2 (gần địch < 7 stud)", Default = false })
 local healV2Running = false
@@ -409,7 +414,7 @@ local function healV2LoopFunction()
                         if not hum then break end
                         if hum.Health >= 100 then break end
                         
-                        sendHeal()
+                        sendHeal()  -- Dùng chung hàm sendHeal() đã cập nhật
                         task.wait(0.0001)
                         
                         if tick() - startTime > 2 then
@@ -927,7 +932,7 @@ end)
 -- SPEED
 -- =============================================
 local speedToggle = MiscTab:CreateToggle("speedToggle", { Title = "🏃 Tùy chỉnh Speed", Default = false })
-local speedSlider = MiscTab:CreateSlider("speedSlider", { Title = "Speed", Min = 16, Max = 19.5, Rounding = 1, Default = 16 })
+local speedSlider = MiscTab:CreateSlider("speedSlider", { Title = "Speed", Min = 16, Max = 23, Rounding = 1, Default = 16 })
 local speedSliderNotify = true
 
 local speedCon
