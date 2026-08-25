@@ -1,0 +1,1049 @@
+-- =============================================
+-- BOOGA TOOLS PRO – FLUENT 4 TABS
+-- =============================================
+
+-- LOAD FLUENT UI
+local Library = loadstring(game:HttpGetAsync("https://github.com/1dontgiveaf/Fluent-Renewed/releases/download/v1.0/Fluent.luau"))()
+local SaveManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/1dontgiveaf/Fluent-Renewed/refs/heads/main/Addons/SaveManager.luau"))()
+local InterfaceManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/1dontgiveaf/Fluent-Renewed/refs/heads/main/Addons/InterfaceManager.luau"))()
+
+-- ===== SERVICES =====
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+-- ===== CHECK DRAWING SUPPORT =====
+local hasDrawing = pcall(function() return Drawing end)
+if not hasDrawing then
+    error("Executor does not support Drawing library!")
+end
+
+-- ===== NHÂN VẬT CHÍNH =====
+local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local hum = char:WaitForChild("Humanoid")
+
+-- ===== TẮT THÔNG BÁO KHI KÉO SLIDER =====
+local notifyEnabled = true
+local function Notify(args)
+    if notifyEnabled then
+        Library:Notify(args)
+    end
+end
+
+-- ===== HÀM KIỂM TRA TEAM =====
+local function isSameTeam(player)
+    if not player or not LocalPlayer then return false end
+    
+    local playerTeam = nil
+    local myTeam = nil
+    
+    if player.Team then
+        playerTeam = player.Team.Name
+    elseif player.TeamColor then
+        playerTeam = player.TeamColor.Name
+    else
+        playerTeam = "NoTribe"
+    end
+    
+    if LocalPlayer.Team then
+        myTeam = LocalPlayer.Team.Name
+    elseif LocalPlayer.TeamColor then
+        myTeam = LocalPlayer.TeamColor.Name
+    else
+        myTeam = "NoTribe"
+    end
+    
+    if playerTeam == "NoTribe" or myTeam == "NoTribe" then
+        return false
+    end
+    
+    if player.Team and LocalPlayer.Team then
+        return player.Team == LocalPlayer.Team
+    elseif player.TeamColor and LocalPlayer.TeamColor then
+        return player.TeamColor == LocalPlayer.TeamColor
+    end
+    
+    return false
+end
+
+-- ===== TẠO CỬA SỔ =====
+local Window = Library:CreateWindow{
+    Title = "Booga Tools Pro",
+    SubTitle = "4 Tabs Version",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(550, 700),
+    Resize = true,
+    MinSize = Vector2.new(400, 500),
+    Acrylic = true,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+}
+
+-- =============================================
+-- AUTO RESIZE GUI (PC + MOBILE)
+-- =============================================
+local function autoResizeGUI()
+    local viewportSize = Camera.ViewportSize
+    local screenWidth = viewportSize.X
+    local screenHeight = viewportSize.Y
+    
+    local isMobile = screenWidth < 800 or UserInputService.TouchEnabled
+    
+    local windowWidth = isMobile and math.min(screenWidth * 0.9, 500) or 550
+    local windowHeight = isMobile and math.min(screenHeight * 0.85, 600) or 700
+    local tabWidth = isMobile and math.min(screenWidth * 0.15, 120) or 160
+    
+    pcall(function()
+        Window:SetSize(UDim2.fromOffset(windowWidth, windowHeight))
+        Window:SetTabWidth(tabWidth)
+    end)
+    
+    local fluentGui
+    for _, gui in pairs(LocalPlayer.PlayerGui:GetChildren()) do
+        if gui:IsA("ScreenGui") and gui.Name:find("Fluent") then
+            fluentGui = gui
+            break
+        end
+    end
+    
+    if fluentGui then
+        local mainFrame = fluentGui:FindFirstChild("Main")
+        if mainFrame and mainFrame:IsA("Frame") then
+            if isMobile then
+                mainFrame.Position = UDim2.new(0.05, 0, 0.05, 0)
+                mainFrame.Size = UDim2.new(0.9, 0, 0.9, 0)
+            end
+        end
+    end
+end
+
+Camera:GetPropertyChangedSignal("ViewportSize"):Connect(autoResizeGUI)
+
+-- =============================================
+-- TAB 1: COMBAT
+-- =============================================
+local CombatTab = Window:AddTab({ Title = "Combat", Icon = "crosshair" })
+
+-- =============================================
+-- CẢNH BÁO 100 STUD
+-- =============================================
+local warningToggle = CombatTab:CreateToggle("warningToggle", { Title = "🔔 Cảnh báo 100 stud (có âm thanh)", Default = false })
+local warningLoop
+local lastWarningTime = 0
+local warningSound = nil
+
+local function createWarningSound()
+    if not warningSound then
+        warningSound = Instance.new("Sound")
+        warningSound.Name = "WarningSound"
+        warningSound.SoundId = "rbxassetid://9126397040"
+        warningSound.Volume = 0.5
+        warningSound.Parent = Workspace
+    end
+end
+
+warningToggle:OnChanged(function(v)
+    if warningLoop then warningLoop:Disconnect() end
+    if v then
+        createWarningSound()
+        warningLoop = RunService.Heartbeat:Connect(function()
+            if not LocalPlayer.Character then return end
+            local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+            
+            local warnPlayers = {}
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer then
+                    if isSameTeam(player) then continue end
+                    local char = player.Character
+                    if char then
+                        local root = char:FindFirstChild("HumanoidRootPart")
+                        if root then
+                            local dist = (root.Position - hrp.Position).Magnitude
+                            if dist <= 100 then
+                                table.insert(warnPlayers, {Name = player.Name, Dist = math.floor(dist)})
+                            end
+                        end
+                    end
+                end
+            end
+            if #warnPlayers > 0 and os.time() - lastWarningTime >= 5 then
+                local names = ""
+                for i, p in ipairs(warnPlayers) do
+                    names = names .. p.Name .. " (" .. p.Dist .. "m) "
+                    if i >= 3 then
+                        names = names .. "và " .. (#warnPlayers - i) .. " người khác"
+                        break
+                    end
+                end
+                Notify{
+                    Title = "🔴 CẢNH BÁO!",
+                    Content = "Có " .. #warnPlayers .. " người trong bán kính 100 stud!\n" .. names,
+                    Duration = 5
+                }
+                lastWarningTime = os.time()
+                if warningSound then
+                    warningSound:Stop()
+                    warningSound:Play()
+                end
+            end
+        end)
+        Notify{ Title = "🔔 Cảnh báo 100 stud", Content = "Đã bật!", Duration = 2 }
+    else
+        if warningSound then
+            warningSound:Stop()
+        end
+        Notify{ Title = "🔔 Cảnh báo 100 stud", Content = "Đã tắt.", Duration = 2 }
+    end
+end)
+
+-- =============================================
+-- HITBOX ĐỘNG
+-- =============================================
+local hitboxToggle = CombatTab:CreateToggle("hitboxToggle", { Title = "🔴 Hitbox động (theo khoảng cách)", Default = false })
+local hitboxLoop = nil
+local hitboxFullSize = Vector3.new(15, 15, 15)
+local hitboxDefaultSize = Vector3.new(2, 1, 1)
+
+local function updateHitbox()
+    if not hitboxToggle.Value then return end
+    if not LocalPlayer.Character then return end
+    local localRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not localRoot then return end
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            if isSameTeam(player) then continue end
+            local char = player.Character
+            if char then
+                local rootPart = char:FindFirstChild("HumanoidRootPart")
+                if rootPart then
+                    local dist = (rootPart.Position - localRoot.Position).Magnitude
+                    local size
+                    if dist >= 10 then
+                        size = hitboxFullSize
+                    elseif dist <= 5 then
+                        size = hitboxDefaultSize
+                    else
+                        local t = (dist - 5) / (10 - 5)
+                        size = hitboxDefaultSize + (hitboxFullSize - hitboxDefaultSize) * t
+                    end
+                    rootPart.Size = size
+                    rootPart.Transparency = 0.7
+                    rootPart.Color = Color3.fromRGB(255, 0, 0)
+                end
+            end
+        end
+    end
+end
+
+hitboxToggle:OnChanged(function(v)
+    if hitboxLoop then hitboxLoop:Disconnect() end
+    if v then
+        hitboxLoop = RunService.RenderStepped:Connect(updateHitbox)
+        Notify{ Title = "🔴 Hitbox động", Content = "Đã bật! 10 stud = 15, 5 stud = 2.", Duration = 3 }
+    else
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                local char = player.Character
+                if char then
+                    local rootPart = char:FindFirstChild("HumanoidRootPart")
+                    if rootPart then
+                        rootPart.Size = hitboxDefaultSize
+                        rootPart.Transparency = 0
+                        rootPart.Color = Color3.fromRGB(255, 255, 255)
+                    end
+                end
+            end
+        end
+        Notify{ Title = "🔴 Hitbox động", Content = "Đã tắt.", Duration = 2 }
+    end
+end)
+
+-- =============================================
+-- AUTO HEAL V1
+-- =============================================
+local autoHealToggle = CombatTab:CreateToggle("autoHealToggle", { Title = "❤️ Auto Heal (Bloodfruit - cực nhanh)", Default = false })
+local healRunning = false
+local healTask = nil
+
+local byteNetRemote = nil
+local function getByteNetRemote()
+    if not byteNetRemote then
+        byteNetRemote = ReplicatedStorage:FindFirstChild("ByteNetReliable")
+    end
+    return byteNetRemote
+end
+
+local function createHealBuffer()
+    local bytes = { 0, 67, 17, 0 }
+    local b = buffer.create(#bytes)
+    for i = 1, #bytes do
+        buffer.writeu8(b, i - 1, bytes[i])
+    end
+    return b
+end
+
+local function sendHeal()
+    local event = getByteNetRemote()
+    if not event then return false end
+    local bufferData = createHealBuffer()
+    pcall(function()
+        event:FireServer(bufferData, nil)
+    end)
+    return true
+end
+
+local function healLoopFunction()
+    while healRunning do
+        if not autoHealToggle.Value then
+            break
+        end
+        
+        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+        if not hum then
+            task.wait(0.1)
+            continue
+        end
+        
+        if hum.Health < 100 then
+            local startTime = tick()
+            while healRunning and autoHealToggle.Value and LocalPlayer.Character do
+                local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
+                if not hum then break end
+                
+                if hum.Health >= 100 then
+                    break
+                end
+                
+                sendHeal()
+                task.wait(0.0001)
+                
+                if tick() - startTime > 2 then
+                    break
+                end
+            end
+        end
+        
+        task.wait(0.1)
+    end
+end
+
+autoHealToggle:OnChanged(function(v)
+    if healTask then
+        task.cancel(healTask)
+        healTask = nil
+    end
+    
+    if v then
+        if not getByteNetRemote() then
+            Notify{
+                Title = "Lỗi",
+                Content = "Không tìm thấy ByteNetReliable!",
+                Duration = 5
+            }
+            autoHealToggle:SetValue(false)
+            return
+        end
+        
+        healRunning = true
+        healTask = task.spawn(healLoopFunction)
+        Notify{ Title = "❤️ Auto Heal", Content = "Đã bật! Spam 10,000 lần/giây.", Duration = 3 }
+    else
+        healRunning = false
+        Notify{ Title = "❤️ Auto Heal", Content = "Đã tắt.", Duration = 2 }
+    end
+end)
+
+-- =============================================
+-- AUTO HEAL V2
+-- =============================================
+local autoHealV2Toggle = CombatTab:CreateToggle("autoHealV2Toggle", { Title = "❤️‍🔥 Auto Heal V2 (gần địch < 7 stud)", Default = false })
+local healV2Running = false
+local healV2Task = nil
+
+local function healV2LoopFunction()
+    while healV2Running do
+        if not autoHealV2Toggle.Value then
+            break
+        end
+        
+        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+        if not hum then
+            task.wait(0.1)
+            continue
+        end
+        
+        if hum.Health < 100 then
+            local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local hasEnemy = false
+                for _, player in pairs(Players:GetPlayers()) do
+                    if player ~= LocalPlayer then
+                        if isSameTeam(player) then continue end
+                        local char = player.Character
+                        if char then
+                            local root = char:FindFirstChild("HumanoidRootPart")
+                            if root then
+                                local dist = (root.Position - hrp.Position).Magnitude
+                                if dist <= 7 then
+                                    hasEnemy = true
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+                if hasEnemy then
+                    local startTime = tick()
+                    while healV2Running and autoHealV2Toggle.Value and LocalPlayer.Character do
+                        local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
+                        if not hum then break end
+                        if hum.Health >= 100 then break end
+                        
+                        sendHeal()
+                        task.wait(0.0001)
+                        
+                        if tick() - startTime > 2 then
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        
+        task.wait(0.1)
+    end
+end
+
+autoHealV2Toggle:OnChanged(function(v)
+    if healV2Task then
+        task.cancel(healV2Task)
+        healV2Task = nil
+    end
+    
+    if v then
+        if not getByteNetRemote() then
+            Notify{
+                Title = "Lỗi",
+                Content = "Không tìm thấy ByteNetReliable!",
+                Duration = 5
+            }
+            autoHealV2Toggle:SetValue(false)
+            return
+        end
+        
+        healV2Running = true
+        healV2Task = task.spawn(healV2LoopFunction)
+        Notify{ Title = "❤️‍🔥 Auto Heal V2", Content = "Đã bật! Heal khi gần địch trong 7 stud.", Duration = 3 }
+    else
+        healV2Running = false
+        Notify{ Title = "❤️‍🔥 Auto Heal V2", Content = "Đã tắt.", Duration = 2 }
+    end
+end)
+
+-- =============================================
+-- TAB 2: ESP
+-- =============================================
+local ESPTab = Window:AddTab({ Title = "ESP", Icon = "eye" })
+
+-- =============================================
+-- ESP PLAYER
+-- =============================================
+local espToggle = ESPTab:CreateToggle("espToggle", { Title = "👁️ ESP Player", Default = false })
+local espUseTeamColor = ESPTab:CreateToggle("espTeamColor", { Title = "🎨 ESP theo màu đội", Default = false })
+
+local espObjects = {}
+local function createESPDrawing(type)
+    if type == "Box" then
+        local box = Drawing.new("Square")
+        box.Visible = false
+        box.ZIndex = 2
+        box.Thickness = 2
+        box.Filled = false
+        box.Color = Color3.fromRGB(255,255,255)
+        box.Transparency = 0.8
+        return box
+    elseif type == "Name" or type == "Health" or type == "Magnitude" then
+        local txt = Drawing.new("Text")
+        txt.Visible = false
+        txt.ZIndex = 3
+        txt.Center = true
+        txt.Outline = true
+        txt.OutlineColor = Color3.fromRGB(0,0,0)
+        txt.Font = Drawing.Fonts.Monospace
+        txt.Size = 16
+        txt.Color = Color3.fromRGB(255,255,255)
+        txt.Transparency = 1
+        return txt
+    elseif type == "Tracer" then
+        local line = Drawing.new("Line")
+        line.Visible = false
+        line.ZIndex = 1
+        line.Thickness = 2
+        line.Color = Color3.fromRGB(255,255,255)
+        line.Transparency = 0.8
+        return line
+    end
+end
+
+local function updateESP()
+    if not espToggle.Value then
+        for _, obj in pairs(espObjects) do
+            if obj.Box then obj.Box.Visible = false end
+            if obj.Name then obj.Name.Visible = false end
+            if obj.Health then obj.Health.Visible = false end
+            if obj.Magnitude then obj.Magnitude.Visible = false end
+            if obj.Tracer then obj.Tracer.Visible = false end
+        end
+        return
+    end
+
+    local localChar = LocalPlayer.Character
+    if not localChar then return end
+    local localRoot = localChar:FindFirstChild("HumanoidRootPart")
+    if not localRoot then return end
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local char = player.Character
+            if char then
+                local root = char:FindFirstChild("HumanoidRootPart")
+                local head = char:FindFirstChild("Head")
+                local humanoid = char:FindFirstChildWhichIsA("Humanoid")
+                if root and head and humanoid then
+                    if not espObjects[player] then
+                        espObjects[player] = {
+                            Box = createESPDrawing("Box"),
+                            Name = createESPDrawing("Name"),
+                            Health = createESPDrawing("Health"),
+                            Magnitude = createESPDrawing("Magnitude"),
+                            Tracer = createESPDrawing("Tracer")
+                        }
+                    end
+                    local objs = espObjects[player]
+
+                    local rootPos, onScreen = Camera:WorldToViewportPoint(root.Position)
+                    local headPos = Camera:WorldToViewportPoint(head.Position)
+                    local topPos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1.5, 0))
+                    local botPos = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
+
+                    if onScreen then
+                        local boxSize = Vector2.new(2500 / rootPos.Z, topPos.Y - botPos.Y)
+                        objs.Box.Size = boxSize
+                        objs.Box.Position = Vector2.new(rootPos.X - boxSize.X/2, rootPos.Y - boxSize.Y/2)
+                        objs.Box.Visible = true
+
+                        local color = Color3.fromRGB(255,255,255)
+                        if espUseTeamColor.Value and player.TeamColor then
+                            color = player.TeamColor.Color
+                        end
+                        objs.Box.Color = color
+
+                        objs.Name.Text = player.Name
+                        objs.Name.Position = Vector2.new(rootPos.X, rootPos.Y - boxSize.Y/2 - 20)
+                        objs.Name.Visible = true
+                        objs.Name.Color = color
+
+                        local healthPercent = math.floor((humanoid.Health / humanoid.MaxHealth) * 100)
+                        objs.Health.Text = "♥ " .. healthPercent .. "%"
+                        objs.Health.Position = Vector2.new(rootPos.X, rootPos.Y + boxSize.Y/2 + 5)
+                        objs.Health.Visible = true
+                        objs.Health.Color = color
+
+                        local dist = (root.Position - localRoot.Position).Magnitude
+                        objs.Magnitude.Text = math.floor(dist) .. "m"
+                        objs.Magnitude.Position = Vector2.new(rootPos.X, rootPos.Y + boxSize.Y/2 + 25)
+                        objs.Magnitude.Visible = true
+                        objs.Magnitude.Color = color
+
+                        objs.Tracer.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
+                        objs.Tracer.To = Vector2.new(rootPos.X, rootPos.Y - boxSize.Y/2)
+                        objs.Tracer.Visible = true
+                        objs.Tracer.Color = color
+                    else
+                        objs.Box.Visible = false
+                        objs.Name.Visible = false
+                        objs.Health.Visible = false
+                        objs.Magnitude.Visible = false
+                        objs.Tracer.Visible = false
+                    end
+                end
+            end
+        end
+    end
+end
+
+local espRunning = false
+local espTask = nil
+
+local function espUpdateLoop()
+    while espRunning do
+        task.wait(0.1)
+        updateESP()
+    end
+end
+
+espToggle:OnChanged(function(v)
+    if v then
+        espRunning = true
+        if espTask then task.cancel(espTask) end
+        espTask = task.spawn(espUpdateLoop)
+        Notify{ Title = "👁️ ESP Player", Content = "Đã bật!", Duration = 2 }
+    else
+        espRunning = false
+        if espTask then task.cancel(espTask); espTask = nil end
+        for _, obj in pairs(espObjects) do
+            if obj.Box then obj.Box.Visible = false end
+            if obj.Name then obj.Name.Visible = false end
+            if obj.Health then obj.Health.Visible = false end
+            if obj.Magnitude then obj.Magnitude.Visible = false end
+            if obj.Tracer then obj.Tracer.Visible = false end
+        end
+        Notify{ Title = "👁️ ESP Player", Content = "Đã tắt.", Duration = 2 }
+    end
+end)
+
+espUseTeamColor:OnChanged(updateESP)
+
+Players.PlayerRemoving:Connect(function(player)
+    if espObjects[player] then
+        for _, obj in pairs(espObjects[player]) do
+            if obj and obj.Remove then obj:Remove() end
+        end
+        espObjects[player] = nil
+    end
+end)
+
+-- =============================================
+-- ESP GOD (tìm trong folder Resources)
+-- =============================================
+local espGodToggle = ESPTab:CreateToggle("espGodToggle", { Title = "✨ ESP God (trong Resources)", Default = false })
+
+local godNames = {
+    "Ancient God",
+    "Furious God",
+    "Hateful God",
+    "Lonely God",
+    "Miserable God",
+    "Old God",
+    "Sleeping God",
+    "Wealthy God"
+}
+local godObjects = {}
+local godRunning = false
+local godTask = nil
+
+local function createGodDrawing(type)
+    if type == "Name" or type == "Distance" then
+        local txt = Drawing.new("Text")
+        txt.Visible = false
+        txt.ZIndex = 3
+        txt.Center = true
+        txt.Outline = true
+        txt.OutlineColor = Color3.fromRGB(0,0,0)
+        txt.Font = Drawing.Fonts.Monospace
+        txt.Size = 15
+        txt.Color = Color3.fromRGB(255, 100, 255)
+        txt.Transparency = 1
+        return txt
+    end
+end
+
+local function updateGodESP()
+    if not espGodToggle.Value then
+        for _, obj in pairs(godObjects) do
+            if obj.Name then obj.Name.Visible = false end
+            if obj.Distance then obj.Distance.Visible = false end
+        end
+        return
+    end
+
+    local localChar = LocalPlayer.Character
+    if not localChar then return end
+    local localRoot = localChar:FindFirstChild("HumanoidRootPart")
+    if not localRoot then return end
+
+    local resourcesFolder = Workspace:FindFirstChild("Resources")
+    if not resourcesFolder then return end
+
+    for _, model in ipairs(resourcesFolder:GetChildren()) do
+        if model:IsA("Model") and table.find(godNames, model.Name) then
+            local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+            if primary then
+                if not godObjects[model] then
+                    godObjects[model] = {
+                        Name = createGodDrawing("Name"),
+                        Distance = createGodDrawing("Distance")
+                    }
+                end
+                local objs = godObjects[model]
+                local pos, onScreen = Camera:WorldToViewportPoint(primary.Position)
+
+                if onScreen then
+                    objs.Name.Text = model.Name
+                    objs.Name.Position = Vector2.new(pos.X, pos.Y - 20)
+                    objs.Name.Visible = true
+
+                    local dist = (primary.Position - localRoot.Position).Magnitude
+                    objs.Distance.Text = math.floor(dist) .. "m"
+                    objs.Distance.Position = Vector2.new(pos.X, pos.Y + 5)
+                    objs.Distance.Visible = true
+                else
+                    objs.Name.Visible = false
+                    objs.Distance.Visible = false
+                end
+            end
+        end
+    end
+
+    for model, objs in pairs(godObjects) do
+        if not model or not model.Parent then
+            if objs.Name then objs.Name.Visible = false end
+            if objs.Distance then objs.Distance.Visible = false end
+            godObjects[model] = nil
+        end
+    end
+end
+
+local function godUpdateLoop()
+    while godRunning do
+        task.wait(0.15)
+        updateGodESP()
+    end
+end
+
+espGodToggle:OnChanged(function(v)
+    if v then
+        godRunning = true
+        if godTask then task.cancel(godTask) end
+        godTask = task.spawn(godUpdateLoop)
+        Notify{ Title = "✨ ESP God", Content = "Đã bật!", Duration = 2 }
+    else
+        godRunning = false
+        if godTask then task.cancel(godTask); godTask = nil end
+        for _, objs in pairs(godObjects) do
+            if objs.Name then objs.Name.Visible = false end
+            if objs.Distance then objs.Distance.Visible = false end
+        end
+        Notify{ Title = "✨ ESP God", Content = "Đã tắt.", Duration = 2 }
+    end
+end)
+
+-- =============================================
+-- TAB 3: MISC
+-- =============================================
+local MiscTab = Window:AddTab({ Title = "Misc", Icon = "settings" })
+
+-- =============================================
+-- SERVER HOP
+-- =============================================
+MiscTab:CreateButton({
+    Title = "🚀 Server Hop (ít người nhất)",
+    Callback = function()
+        local placeId = game.PlaceId
+        local universeId = game.GameId
+        local url = "https://games.roblox.com/v1/games/" .. tostring(universeId) .. "/servers/Public?limit=100"
+        local success, response = pcall(function() return game:HttpGet(url) end)
+        if not success then
+            Notify{ Title = "Lỗi", Content = "Không kết nối API.", Duration = 5 }
+            return
+        end
+        local data
+        pcall(function() data = HttpService:JSONDecode(response) end)
+        if not data or not data.data then
+            Notify{ Title = "Lỗi", Content = "Dữ liệu server không hợp lệ.", Duration = 5 }
+            return
+        end
+        local best, min = nil, 999
+        for _, server in pairs(data.data) do
+            if server.id ~= game.JobId then
+                local count = server.playing or 0
+                if count < min then
+                    min = count; best = server
+                end
+            end
+        end
+        if best then
+            Notify{ Title = "Đang chuyển", Content = "Server có " .. min .. " người.", Duration = 3 }
+            TeleportService:TeleportToPlaceInstance(placeId, best.id, LocalPlayer)
+        else
+            Notify{ Title = "Thông báo", Content = "Bạn đang ở server ít nhất!", Duration = 5 }
+        end
+    end
+})
+
+-- =============================================
+-- FULLBRIGHT
+-- =============================================
+local fullbrightToggle = MiscTab:CreateToggle("fullbrightToggle", { Title = "💡 Fullbright", Default = false })
+local fbCon
+fullbrightToggle:OnChanged(function(v)
+    if fbCon then fbCon:Disconnect() end
+    if v then
+        fbCon = RunService.RenderStepped:Connect(function()
+            Lighting.Brightness = 1
+            Lighting.Ambient = Color3.fromRGB(255,255,255)
+            Lighting.ClockTime = 12
+        end)
+        Notify{ Title = "💡 Fullbright", Content = "Đã bật sáng toàn bộ!", Duration = 2 }
+    else
+        Lighting.Brightness = 0.5
+        Lighting.Ambient = Color3.fromRGB(127,127,127)
+        Notify{ Title = "💡 Fullbright", Content = "Đã tắt.", Duration = 2 }
+    end
+end)
+
+-- =============================================
+-- NO FOG
+-- =============================================
+local noFogToggle = MiscTab:CreateToggle("noFogToggle", { Title = "🌫️ Xóa sương mù", Default = false })
+local fogCon
+noFogToggle:OnChanged(function(v)
+    if fogCon then fogCon:Disconnect() end
+    if v then
+        fogCon = RunService.RenderStepped:Connect(function()
+            Lighting.FogEnd = 999999
+            Lighting.FogStart = 0
+        end)
+        Notify{ Title = "🌫️ Xóa sương mù", Content = "Đã xóa fog!", Duration = 2 }
+    else
+        Lighting.FogEnd = 1000
+        Lighting.FogStart = 0
+        Notify{ Title = "🌫️ Xóa sương mù", Content = "Đã tắt.", Duration = 2 }
+    end
+end)
+
+-- =============================================
+-- SPEED
+-- =============================================
+local speedToggle = MiscTab:CreateToggle("speedToggle", { Title = "🏃 Tùy chỉnh Speed", Default = false })
+local speedSlider = MiscTab:CreateSlider("speedSlider", { Title = "Speed", Min = 16, Max = 19.5, Rounding = 1, Default = 16 })
+local speedSliderNotify = true
+
+local speedCon
+local function applySpeed()
+    if speedToggle.Value then
+        if hum and hum.Parent then hum.WalkSpeed = speedSlider.Value end
+    else
+        if hum then hum.WalkSpeed = 16 end
+    end
+end
+
+speedToggle:OnChanged(function(v)
+    if speedCon then speedCon:Disconnect() end
+    if v then
+        speedCon = RunService.RenderStepped:Connect(applySpeed)
+        applySpeed()
+        Notify{ Title = "🏃 Speed", Content = "Tốc độ: " .. speedSlider.Value, Duration = 2 }
+    else
+        if hum then hum.WalkSpeed = 16 end
+        Notify{ Title = "🏃 Speed", Content = "Đã tắt.", Duration = 2 }
+    end
+end)
+speedSlider:OnChanged(function(v)
+    if speedToggle.Value then
+        if speedSliderNotify then
+            Notify{ Title = "🏃 Speed", Content = "Tốc độ: " .. v, Duration = 2 }
+        end
+        applySpeed()
+    end
+end)
+
+-- =============================================
+-- CLIMB MOUNTAIN
+-- =============================================
+local climbToggle = MiscTab:CreateToggle("climbToggle", { Title = "⛰️ Leo dốc", Default = false })
+local climbCon
+climbToggle:OnChanged(function(v)
+    if climbCon then climbCon:Disconnect() end
+    if v then
+        climbCon = RunService.RenderStepped:Connect(function()
+            if hum then hum.MaxSlopeAngle = 90 end
+        end)
+        Notify{ Title = "⛰️ Leo dốc", Content = "Đã bật!", Duration = 2 }
+    else
+        if hum then hum.MaxSlopeAngle = 46 end
+        Notify{ Title = "⛰️ Leo dốc", Content = "Đã tắt.", Duration = 2 }
+    end
+end)
+
+-- =============================================
+-- GRAVITY
+-- =============================================
+local gravityToggle = MiscTab:CreateToggle("gravityToggle", { Title = "🌎 Tùy chỉnh Gravity", Default = false })
+local gravitySlider = MiscTab:CreateSlider("gravitySlider", { Title = "Gravity", Min = 90, Max = 196.2, Rounding = 1, Default = 196.2 })
+local gravitySliderNotify = true
+
+local gravityCon
+gravityToggle:OnChanged(function(v)
+    if gravityCon then gravityCon:Disconnect() end
+    if v then
+        gravityCon = RunService.RenderStepped:Connect(function()
+            Workspace.Gravity = gravitySlider.Value
+        end)
+        Notify{ Title = "🌎 Gravity", Content = "Đã bật! Giá trị: " .. gravitySlider.Value, Duration = 2 }
+    else
+        Workspace.Gravity = 196.2
+        Notify{ Title = "🌎 Gravity", Content = "Đã tắt.", Duration = 2 }
+    end
+end)
+gravitySlider:OnChanged(function(v)
+    if gravityToggle.Value then
+        if gravitySliderNotify then
+            Notify{ Title = "🌎 Gravity", Content = "Giá trị: " .. v, Duration = 2 }
+        end
+        Workspace.Gravity = v
+    end
+end)
+
+-- =============================================
+-- TAB 4: SETTINGS
+-- =============================================
+local SettingsTab = Window:AddTab({ Title = "Settings", Icon = "settings" })
+
+-- =============================================
+-- TOGGLE TẮT THÔNG BÁO (Notify)
+-- =============================================
+SettingsTab:CreateToggle({
+    Title = "🔕 Tắt thông báo (Notify)",
+    Default = false,
+    Callback = function(v)
+        notifyEnabled = not v
+        if v then
+            Library:Notify{ Title = "🔕 Thông báo", Content = "Đã tắt thông báo.", Duration = 2 }
+        else
+            Library:Notify{ Title = "🔔 Thông báo", Content = "Đã bật thông báo.", Duration = 2 }
+        end
+    end
+})
+
+-- =============================================
+-- RESET + DESTROY
+-- =============================================
+SettingsTab:AddButton({
+    Title = "🔄 Reset tất cả cấu hình",
+    Callback = function()
+        SaveManager:ResetAll()
+        Notify{
+            Title = "Đã reset",
+            Content = "Tất cả cấu hình đã được xóa!",
+            Duration = 3
+        }
+    end
+})
+
+SettingsTab:AddButton({
+    Title = "🗑️ Destroy GUI + Cleanup",
+    Callback = function()
+        -- Dừng tất cả các vòng lặp
+        espRunning = false
+        godRunning = false
+        healRunning = false
+        healV2Running = false
+        
+        if hitboxLoop then hitboxLoop:Disconnect() end
+        if warningLoop then warningLoop:Disconnect() end
+        if fbCon then fbCon:Disconnect() end
+        if fogCon then fogCon:Disconnect() end
+        if speedCon then speedCon:Disconnect() end
+        if climbCon then climbCon:Disconnect() end
+        if gravityCon then gravityCon:Disconnect() end
+        
+        if espTask then task.cancel(espTask) end
+        if godTask then task.cancel(godTask) end
+        if healTask then task.cancel(healTask) end
+        if healV2Task then task.cancel(healV2Task) end
+        
+        if warningSound then warningSound:Stop() end
+        
+        -- Xóa tất cả drawing objects (ESP)
+        for _, obj in pairs(espObjects) do
+            if obj.Box then obj.Box.Visible = false end
+            if obj.Name then obj.Name.Visible = false end
+            if obj.Health then obj.Health.Visible = false end
+            if obj.Magnitude then obj.Magnitude.Visible = false end
+            if obj.Tracer then obj.Tracer.Visible = false end
+        end
+        for _, objs in pairs(godObjects) do
+            if objs.Name then objs.Name.Visible = false end
+            if objs.Distance then objs.Distance.Visible = false end
+        end
+        
+        -- Reset hitbox
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                local char = player.Character
+                if char then
+                    local rootPart = char:FindFirstChild("HumanoidRootPart")
+                    if rootPart then
+                        rootPart.Size = Vector3.new(2, 1, 1)
+                        rootPart.Transparency = 0
+                        rootPart.Color = Color3.fromRGB(255, 255, 255)
+                    end
+                end
+            end
+        end
+        
+        -- Reset speed và gravity
+        if hum then hum.WalkSpeed = 16 end
+        Workspace.Gravity = 196.2
+        
+        Notify{ Title = "GUI", Content = "Đã dọn dẹp và hủy giao diện!", Duration = 3 }
+        task.wait(1)
+        
+        Window:Destroy()
+        print("Booga Tools Pro đã được dọn dẹp hoàn toàn.")
+    end
+})
+
+-- =============================================
+-- LƯU CẤU HÌNH + KHỞI ĐỘNG
+-- =============================================
+SaveManager:SetLibrary(Library)
+InterfaceManager:SetLibrary(Library)
+
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes{}
+
+InterfaceManager:SetFolder("BoogaToolsPro")
+SaveManager:SetFolder("BoogaToolsPro")
+
+InterfaceManager:BuildInterfaceSection(SettingsTab)
+SaveManager:BuildConfigSection(SettingsTab)
+
+-- RESET NHÂN VẬT
+local function onCharacterAdded(newChar)
+    char = newChar
+    hum = char:WaitForChild("Humanoid")
+    
+    if speedToggle.Value then
+        hum.WalkSpeed = speedSlider.Value
+    end
+    if climbToggle.Value then
+        hum.MaxSlopeAngle = 90
+    end
+end
+LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+
+-- Chạy auto resize lần đầu
+task.wait(0.5)
+autoResizeGUI()
+
+Window:SelectTab(1)
+
+Notify{
+    Title = "Booga Tools Pro",
+    Content = "Đã tải! 4 tabs, không thông báo khi kéo slider.",
+    Duration = 5
+}
+
+SaveManager:LoadAutoloadConfig()
