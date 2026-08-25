@@ -1,5 +1,5 @@
 -- =============================================
--- BOOGA TOOLS PRO – FLUENT 4 TABS
+-- BOOGA TOOLS PRO – FLUENT 4 TABS (FULL)
 -- =============================================
 
 -- LOAD FLUENT UI
@@ -18,7 +18,6 @@ local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 
 -- ===== CHECK DRAWING SUPPORT =====
 local hasDrawing = pcall(function() return Drawing end)
@@ -79,7 +78,7 @@ local Window = Library:CreateWindow{
     Title = "Booga Tools Pro",
     SubTitle = "4 Tabs Version",
     TabWidth = 160,
-    Size = UDim2.fromOffset(550, 700),
+    Size = UDim2.fromOffset(550, 750),
     Resize = true,
     MinSize = Vector2.new(400, 500),
     Acrylic = true,
@@ -98,7 +97,7 @@ local function autoResizeGUI()
     local isMobile = screenWidth < 800 or UserInputService.TouchEnabled
     
     local windowWidth = isMobile and math.min(screenWidth * 0.9, 500) or 550
-    local windowHeight = isMobile and math.min(screenHeight * 0.85, 600) or 700
+    local windowHeight = isMobile and math.min(screenHeight * 0.85, 600) or 750
     local tabWidth = isMobile and math.min(screenWidth * 0.15, 120) or 160
     
     pcall(function()
@@ -205,6 +204,8 @@ warningToggle:OnChanged(function(v)
     end
 end)
 
+
+
 -- =============================================
 -- HITBOX ĐỘNG
 -- =============================================
@@ -268,11 +269,10 @@ hitboxToggle:OnChanged(function(v)
     end
 end)
 
+
+
 -- =============================================
--- AUTO HEAL V1
--- =============================================
--- =============================================
--- AUTO HEAL V1 (Remote mới: {0, 67, 24, 0})
+-- AUTO HEAL V1 (LayoutOrder động)
 -- =============================================
 local autoHealToggle = CombatTab:CreateToggle("autoHealToggle", { Title = "❤️ Auto Heal (Bloodfruit - cực nhanh)", Default = false })
 local healRunning = false
@@ -286,9 +286,38 @@ local function getByteNetRemote()
     return byteNetRemote
 end
 
--- Buffer mới {0, 67, 24, 0}
-local function createHealBuffer()
-    local bytes = { 0, 67, 24, 0 }
+local function getBloodfruitLayoutOrder()
+    local success, result = pcall(function()
+        local mainGui = LocalPlayer.PlayerGui:FindFirstChild("MainGui")
+        if not mainGui then return nil end
+        local rightPanel = mainGui:FindFirstChild("RightPanel")
+        if not rightPanel then return nil end
+        local inventory = rightPanel:FindFirstChild("Inventory")
+        if not inventory then return nil end
+        local list = inventory:FindFirstChild("List")
+        if not list then return nil end
+        
+        for _, child in ipairs(list:GetChildren()) do
+            if child:IsA("ImageLabel") and child.Name == "Bloodfruit" then
+                return child.LayoutOrder
+            end
+        end
+        return nil
+    end)
+    
+    if success then
+        return result
+    end
+    return nil
+end
+
+-- Tạo buffer động dựa trên LayoutOrder của Bloodfruit
+local function createHealBufferDynamic()
+    local layoutOrder = getBloodfruitLayoutOrder()
+    if not layoutOrder then
+        return nil
+    end
+    local bytes = { 0, 67, layoutOrder, 0 }
     local b = buffer.create(#bytes)
     for i = 1, #bytes do
         buffer.writeu8(b, i - 1, bytes[i])
@@ -296,13 +325,16 @@ local function createHealBuffer()
     return b
 end
 
--- Gửi heal với remote mới
+-- Gửi heal với buffer động
 local function sendHeal()
     local event = getByteNetRemote()
     if not event then return false end
-    local bufferData = createHealBuffer()
+    
+    local bufferData = createHealBufferDynamic()
+    if not bufferData then return false end
+    
     pcall(function()
-        event:FireServer(bufferData, nil)  -- Vẫn giữ nil như code Cobalt
+        event:FireServer(bufferData, nil)
     end)
     return true
 end
@@ -359,9 +391,21 @@ autoHealToggle:OnChanged(function(v)
             return
         end
         
+        -- Kiểm tra xem có tìm thấy Bloodfruit không
+        local layoutOrder = getBloodfruitLayoutOrder()
+        if not layoutOrder then
+            Notify{
+                Title = "Lỗi",
+                Content = "Không tìm thấy Bloodfruit trong Inventory!",
+                Duration = 5
+            }
+            autoHealToggle:SetValue(false)
+            return
+        end
+        
         healRunning = true
         healTask = task.spawn(healLoopFunction)
-        Notify{ Title = "❤️ Auto Heal", Content = "Đã bật! Spam 10,000 lần/giây.", Duration = 3 }
+        Notify{ Title = "❤️ Auto Heal", Content = "Đã bật! LayoutOrder: " .. layoutOrder, Duration = 3 }
     else
         healRunning = false
         Notify{ Title = "❤️ Auto Heal", Content = "Đã tắt.", Duration = 2 }
@@ -369,7 +413,7 @@ autoHealToggle:OnChanged(function(v)
 end)
 
 -- =============================================
--- AUTO HEAL V2 (Remote mới: {0, 67, 24, 0})
+-- AUTO HEAL V2 (LayoutOrder động + gần địch)
 -- =============================================
 local autoHealV2Toggle = CombatTab:CreateToggle("autoHealV2Toggle", { Title = "❤️‍🔥 Auto Heal V2 (gần địch < 7 stud)", Default = false })
 local healV2Running = false
@@ -414,7 +458,7 @@ local function healV2LoopFunction()
                         if not hum then break end
                         if hum.Health >= 100 then break end
                         
-                        sendHeal()  -- Dùng chung hàm sendHeal() đã cập nhật
+                        sendHeal()
                         task.wait(0.0001)
                         
                         if tick() - startTime > 2 then
@@ -446,9 +490,20 @@ autoHealV2Toggle:OnChanged(function(v)
             return
         end
         
+        local layoutOrder = getBloodfruitLayoutOrder()
+        if not layoutOrder then
+            Notify{
+                Title = "Lỗi",
+                Content = "Không tìm thấy Bloodfruit trong Inventory!",
+                Duration = 5
+            }
+            autoHealV2Toggle:SetValue(false)
+            return
+        end
+        
         healV2Running = true
         healV2Task = task.spawn(healV2LoopFunction)
-        Notify{ Title = "❤️‍🔥 Auto Heal V2", Content = "Đã bật! Heal khi gần địch trong 7 stud.", Duration = 3 }
+        Notify{ Title = "❤️‍🔥 Auto Heal V2", Content = "Đã bật! LayoutOrder: " .. layoutOrder, Duration = 3 }
     else
         healV2Running = false
         Notify{ Title = "❤️‍🔥 Auto Heal V2", Content = "Đã tắt.", Duration = 2 }
@@ -456,17 +511,12 @@ autoHealV2Toggle:OnChanged(function(v)
 end)
 
 -- =============================================
--- TAB 2: ESP (BILLBOARDGUI, VIỀN, NỀN TRONG SUỐT, MÀU ĐỒNG BỘ)
+-- TAB 2: ESP (NỀN TRONG SUỐT)
 -- =============================================
 local ESPTab = Window:AddTab({ Title = "ESP", Icon = "eye" })
 
-local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
-local LocalPlayer = Players.LocalPlayer
-
 -- =============================================
--- 1. ESP PLAYER
+-- ESP PLAYER
 -- =============================================
 local espToggle = ESPTab:CreateToggle("espToggle", { Title = "👁️ ESP Player (Tên + Máu + Khoảng cách)", Default = false })
 local espUseTeamColor = ESPTab:CreateToggle("espTeamColor", { Title = "🎨 ESP theo màu đội", Default = false })
@@ -615,7 +665,7 @@ Players.PlayerAdded:Connect(function(player) if espToggle.Value then createPlaye
 Players.PlayerRemoving:Connect(function(player) removePlayerBillboard(player) end)
 
 -- =============================================
--- 2. ESP GOD
+-- ESP GOD
 -- =============================================
 local espGodToggle = ESPTab:CreateToggle("espGodToggle", { Title = "✨ ESP God (trong Resources)", Default = false })
 local godBillboards = {}
@@ -696,7 +746,7 @@ espGodToggle:OnChanged(function(v)
 end)
 
 -- =============================================
--- 3. ESP ORE
+-- ESP ORE
 -- =============================================
 local oreDisplayToOriginal = {
     ["Rich Adurite"] = "Adurite Rich Rock",
@@ -860,34 +910,6 @@ MiscTab:CreateButton({
 })
 
 -- =============================================
--- MAX ZOOM (Vô cực)
--- =============================================
--- =============================================
--- MAX ZOOM (Vô cực) - Dành cho Fluent UI
--- =============================================
-local zoomToggle = MiscTab:CreateToggle("zoomToggle", { Title = "🔭 Zoom vô cực (MaxZoomDistance)", Default = false })
-local zoomCon
-
-zoomToggle:OnChanged(function(v)
-    if zoomCon then zoomCon:Disconnect() end
-    if v then
-        zoomCon = RunService.RenderStepped:Connect(function()
-            pcall(function()
-                workspace.CurrentCamera.MaxZoomDistance = 999999999
-                workspace.CurrentCamera.MinZoomDistance = 0.5
-            end)
-        end)
-        Notify{ Title = "🔭 Zoom", Content = "Đã bật zoom vô cực!", Duration = 2 }
-    else
-        pcall(function()
-            workspace.CurrentCamera.MaxZoomDistance = 400
-            workspace.CurrentCamera.MinZoomDistance = 1
-        end)
-        Notify{ Title = "🔭 Zoom", Content = "Đã tắt.", Duration = 2 }
-    end
-end)
-
--- =============================================
 -- FULLBRIGHT
 -- =============================================
 local fullbrightToggle = MiscTab:CreateToggle("fullbrightToggle", { Title = "💡 Fullbright", Default = false })
@@ -932,7 +954,7 @@ end)
 -- SPEED
 -- =============================================
 local speedToggle = MiscTab:CreateToggle("speedToggle", { Title = "🏃 Tùy chỉnh Speed", Default = false })
-local speedSlider = MiscTab:CreateSlider("speedSlider", { Title = "Speed", Min = 16, Max = 23, Rounding = 1, Default = 16 })
+local speedSlider = MiscTab:CreateSlider("speedSlider", { Title = "Speed", Min = 16, Max = 19.5, Rounding = 1, Default = 16 })
 local speedSliderNotify = true
 
 local speedCon
@@ -1012,6 +1034,30 @@ gravitySlider:OnChanged(function(v)
 end)
 
 -- =============================================
+-- ZOOM VÔ CỰC
+-- =============================================
+local zoomToggle = MiscTab:CreateToggle("zoomToggle", { Title = "🔭 Zoom vô cực", Default = false })
+local zoomCon
+zoomToggle:OnChanged(function(v)
+    if zoomCon then zoomCon:Disconnect() end
+    if v then
+        zoomCon = RunService.RenderStepped:Connect(function()
+            pcall(function()
+                Camera.MaxZoomDistance = 999999999
+                Camera.MinZoomDistance = 0.5
+            end)
+        end)
+        Notify{ Title = "🔭 Zoom", Content = "Đã bật zoom vô cực!", Duration = 2 }
+    else
+        pcall(function()
+            Camera.MaxZoomDistance = 400
+            Camera.MinZoomDistance = 1
+        end)
+        Notify{ Title = "🔭 Zoom", Content = "Đã tắt.", Duration = 2 }
+    end
+end)
+
+-- =============================================
 -- TAB 4: SETTINGS
 -- =============================================
 local SettingsTab = Window:AddTab({ Title = "Settings", Icon = "settings" })
@@ -1051,11 +1097,6 @@ SettingsTab:AddButton({
     Title = "🗑️ Destroy GUI + Cleanup",
     Callback = function()
         -- Dừng tất cả các vòng lặp
-        espRunning = false
-        godRunning = false
-        healRunning = false
-        healV2Running = false
-        
         if hitboxLoop then hitboxLoop:Disconnect() end
         if warningLoop then warningLoop:Disconnect() end
         if fbCon then fbCon:Disconnect() end
@@ -1063,26 +1104,20 @@ SettingsTab:AddButton({
         if speedCon then speedCon:Disconnect() end
         if climbCon then climbCon:Disconnect() end
         if gravityCon then gravityCon:Disconnect() end
+        if zoomCon then zoomCon:Disconnect() end
+        if playerRenderConn then playerRenderConn:Disconnect() end
+        if godRenderConn then godRenderConn:Disconnect() end
+        if oreRenderConn then oreRenderConn:Disconnect() end
         
-        if espTask then task.cancel(espTask) end
-        if godTask then task.cancel(godTask) end
         if healTask then task.cancel(healTask) end
         if healV2Task then task.cancel(healV2Task) end
         
         if warningSound then warningSound:Stop() end
         
-        -- Xóa tất cả drawing objects (ESP)
-        for _, obj in pairs(espObjects) do
-            if obj.Box then obj.Box.Visible = false end
-            if obj.Name then obj.Name.Visible = false end
-            if obj.Health then obj.Health.Visible = false end
-            if obj.Magnitude then obj.Magnitude.Visible = false end
-            if obj.Tracer then obj.Tracer.Visible = false end
-        end
-        for _, objs in pairs(godObjects) do
-            if objs.Name then objs.Name.Visible = false end
-            if objs.Distance then objs.Distance.Visible = false end
-        end
+        -- Xóa tất cả billboard
+        clearAllPlayerBillboards()
+        clearAllGodBillboards()
+        clearAllOreBillboards()
         
         -- Reset hitbox
         for _, player in pairs(Players:GetPlayers()) do
@@ -1148,7 +1183,7 @@ Window:SelectTab(1)
 
 Notify{
     Title = "Booga Tools Pro",
-    Content = "Đã tải! 4 tabs, không thông báo khi kéo slider.",
+    Content = "Đã tải! 4 tabs, ESP trong suốt.",
     Duration = 5
 }
 
