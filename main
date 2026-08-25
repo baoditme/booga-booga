@@ -451,290 +451,363 @@ autoHealV2Toggle:OnChanged(function(v)
 end)
 
 -- =============================================
--- TAB 2: ESP
+-- TAB 2: ESP (BILLBOARDGUI, VIỀN, NỀN TRONG SUỐT, MÀU ĐỒNG BỘ)
 -- =============================================
 local ESPTab = Window:AddTab({ Title = "ESP", Icon = "eye" })
 
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
 -- =============================================
--- ESP PLAYER
+-- 1. ESP PLAYER
 -- =============================================
-local espToggle = ESPTab:CreateToggle("espToggle", { Title = "👁️ ESP Player", Default = false })
+local espToggle = ESPTab:CreateToggle("espToggle", { Title = "👁️ ESP Player (Tên + Máu + Khoảng cách)", Default = false })
 local espUseTeamColor = ESPTab:CreateToggle("espTeamColor", { Title = "🎨 ESP theo màu đội", Default = false })
 
-local espObjects = {}
-local function createESPDrawing(type)
-    if type == "Box" then
-        local box = Drawing.new("Square")
-        box.Visible = false
-        box.ZIndex = 2
-        box.Thickness = 2
-        box.Filled = false
-        box.Color = Color3.fromRGB(255,255,255)
-        box.Transparency = 0.8
-        return box
-    elseif type == "Name" or type == "Health" or type == "Magnitude" then
-        local txt = Drawing.new("Text")
-        txt.Visible = false
-        txt.ZIndex = 3
-        txt.Center = true
-        txt.Outline = true
-        txt.OutlineColor = Color3.fromRGB(0,0,0)
-        txt.Font = Drawing.Fonts.Monospace
-        txt.Size = 16
-        txt.Color = Color3.fromRGB(255,255,255)
-        txt.Transparency = 1
-        return txt
-    elseif type == "Tracer" then
-        local line = Drawing.new("Line")
-        line.Visible = false
-        line.ZIndex = 1
-        line.Thickness = 2
-        line.Color = Color3.fromRGB(255,255,255)
-        line.Transparency = 0.8
-        return line
+local playerBillboards = {}
+local playerConnections = {}
+local playerRenderConn = nil
+
+local function removePlayerBillboard(player)
+    local data = playerBillboards[player]
+    if data and data.Bill then
+        data.Bill:Destroy()
+    end
+    playerBillboards[player] = nil
+    if playerConnections[player] then
+        playerConnections[player]:Disconnect()
+        playerConnections[player] = nil
     end
 end
 
-local function updateESP()
-    if not espToggle.Value then
-        for _, obj in pairs(espObjects) do
-            if obj.Box then obj.Box.Visible = false end
-            if obj.Name then obj.Name.Visible = false end
-            if obj.Health then obj.Health.Visible = false end
-            if obj.Magnitude then obj.Magnitude.Visible = false end
-            if obj.Tracer then obj.Tracer.Visible = false end
-        end
-        return
+local function createPlayerBillboard(player)
+    if player == LocalPlayer or playerBillboards[player] then return end
+    local char = player.Character
+    if not char then return end
+    local head = char:FindFirstChild("Head")
+    if not head then return end
+
+    local bill = Instance.new("BillboardGui")
+    bill.Name = "PlayerESP"
+    bill.Size = UDim2.new(0, 250, 0, 80)
+    bill.Adornee = head
+    bill.AlwaysOnTop = true
+    bill.StudsOffset = Vector3.new(0, 2.5, 0)
+    bill.Parent = head
+
+    -- Nền trong suốt
+    local bg = Instance.new("Frame")
+    bg.Size = UDim2.new(1, 0, 1, 0)
+    bg.BackgroundTransparency = 1
+    bg.BorderSizePixel = 0
+    bg.Parent = bill
+
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, 0, 0.35, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = player.Name
+    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLabel.Font = Enum.Font.SourceSans
+    nameLabel.TextSize = 18
+    nameLabel.Parent = bg
+    local strokeName = Instance.new("UIStroke")
+    strokeName.Thickness = 1.5
+    strokeName.Color = Color3.fromRGB(0, 0, 0)
+    strokeName.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    strokeName.Parent = nameLabel
+
+    local healthLabel = Instance.new("TextLabel")
+    healthLabel.Size = UDim2.new(1, 0, 0.3, 0)
+    healthLabel.Position = UDim2.new(0, 0, 0.35, 0)
+    healthLabel.BackgroundTransparency = 1
+    healthLabel.Text = "♥ 100%"
+    healthLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+    healthLabel.Font = Enum.Font.SourceSans
+    healthLabel.TextSize = 16
+    healthLabel.Parent = bg
+    local strokeHealth = Instance.new("UIStroke")
+    strokeHealth.Thickness = 1.5
+    strokeHealth.Color = Color3.fromRGB(0, 0, 0)
+    strokeHealth.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    strokeHealth.Parent = healthLabel
+
+    local distLabel = Instance.new("TextLabel")
+    distLabel.Size = UDim2.new(1, 0, 0.35, 0)
+    distLabel.Position = UDim2.new(0, 0, 0.65, 0)
+    distLabel.BackgroundTransparency = 1
+    distLabel.Text = "0m"
+    distLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    distLabel.Font = Enum.Font.SourceSans
+    distLabel.TextSize = 14
+    distLabel.Parent = bg
+    local strokeDist = Instance.new("UIStroke")
+    strokeDist.Thickness = 1.5
+    strokeDist.Color = Color3.fromRGB(0, 0, 0)
+    strokeDist.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    strokeDist.Parent = distLabel
+
+    playerBillboards[player] = { Bill = bill, Name = nameLabel, Health = healthLabel, Dist = distLabel }
+
+    playerConnections[player] = player.CharacterAdded:Connect(function()
+        removePlayerBillboard(player)
+        task.wait(0.5)
+        if espToggle.Value then createPlayerBillboard(player) end
+    end)
+end
+
+local function clearAllPlayerBillboards()
+    for player, data in pairs(playerBillboards) do
+        if data.Bill then data.Bill:Destroy() end
     end
+    table.clear(playerBillboards)
+    for _, conn in pairs(playerConnections) do conn:Disconnect() end
+    table.clear(playerConnections)
+end
 
+local function updateAllPlayers()
     local localChar = LocalPlayer.Character
-    if not localChar then return end
-    local localRoot = localChar:FindFirstChild("HumanoidRootPart")
-    if not localRoot then return end
+    local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
 
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            local char = player.Character
-            if char then
-                local root = char:FindFirstChild("HumanoidRootPart")
-                local head = char:FindFirstChild("Head")
-                local humanoid = char:FindFirstChildWhichIsA("Humanoid")
-                if root and head and humanoid then
-                    if not espObjects[player] then
-                        espObjects[player] = {
-                            Box = createESPDrawing("Box"),
-                            Name = createESPDrawing("Name"),
-                            Health = createESPDrawing("Health"),
-                            Magnitude = createESPDrawing("Magnitude"),
-                            Tracer = createESPDrawing("Tracer")
-                        }
-                    end
-                    local objs = espObjects[player]
+    for player, data in pairs(playerBillboards) do
+        local char = player.Character
+        local humanoid = char and char:FindFirstChildWhichIsA("Humanoid")
+        local root = char and char:FindFirstChild("HumanoidRootPart")
 
-                    local rootPos, onScreen = Camera:WorldToViewportPoint(root.Position)
-                    local headPos = Camera:WorldToViewportPoint(head.Position)
-                    local topPos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1.5, 0))
-                    local botPos = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
+        if humanoid and root and localRoot then
+            local hp = math.floor((humanoid.Health / humanoid.MaxHealth) * 100)
+            data.Health.Text = "♥ " .. hp .. "%"
+            data.Health.TextColor3 = hp > 50 and Color3.fromRGB(0, 255, 0) or (hp > 25 and Color3.fromRGB(255, 255, 0) or Color3.fromRGB(255, 0, 0))
 
-                    if onScreen then
-                        local boxSize = Vector2.new(2500 / rootPos.Z, topPos.Y - botPos.Y)
-                        objs.Box.Size = boxSize
-                        objs.Box.Position = Vector2.new(rootPos.X - boxSize.X/2, rootPos.Y - boxSize.Y/2)
-                        objs.Box.Visible = true
+            local dist = (root.Position - localRoot.Position).Magnitude
+            data.Dist.Text = math.floor(dist) .. "m"
 
-                        local color = Color3.fromRGB(255,255,255)
-                        if espUseTeamColor.Value and player.TeamColor then
-                            color = player.TeamColor.Color
-                        end
-                        objs.Box.Color = color
-
-                        objs.Name.Text = player.Name
-                        objs.Name.Position = Vector2.new(rootPos.X, rootPos.Y - boxSize.Y/2 - 20)
-                        objs.Name.Visible = true
-                        objs.Name.Color = color
-
-                        local healthPercent = math.floor((humanoid.Health / humanoid.MaxHealth) * 100)
-                        objs.Health.Text = "♥ " .. healthPercent .. "%"
-                        objs.Health.Position = Vector2.new(rootPos.X, rootPos.Y + boxSize.Y/2 + 5)
-                        objs.Health.Visible = true
-                        objs.Health.Color = color
-
-                        local dist = (root.Position - localRoot.Position).Magnitude
-                        objs.Magnitude.Text = math.floor(dist) .. "m"
-                        objs.Magnitude.Position = Vector2.new(rootPos.X, rootPos.Y + boxSize.Y/2 + 25)
-                        objs.Magnitude.Visible = true
-                        objs.Magnitude.Color = color
-
-                        objs.Tracer.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
-                        objs.Tracer.To = Vector2.new(rootPos.X, rootPos.Y - boxSize.Y/2)
-                        objs.Tracer.Visible = true
-                        objs.Tracer.Color = color
-                    else
-                        objs.Box.Visible = false
-                        objs.Name.Visible = false
-                        objs.Health.Visible = false
-                        objs.Magnitude.Visible = false
-                        objs.Tracer.Visible = false
-                    end
-                end
+            if espUseTeamColor.Value and player.TeamColor then
+                data.Name.TextColor3 = player.TeamColor.Color
+            else
+                data.Name.TextColor3 = Color3.fromRGB(255, 255, 255)
             end
         end
-    end
-end
-
-local espRunning = false
-local espTask = nil
-
-local function espUpdateLoop()
-    while espRunning do
-        task.wait(0.1)
-        updateESP()
     end
 end
 
 espToggle:OnChanged(function(v)
     if v then
-        espRunning = true
-        if espTask then task.cancel(espTask) end
-        espTask = task.spawn(espUpdateLoop)
+        for _, player in pairs(Players:GetPlayers()) do createPlayerBillboard(player) end
+        if playerRenderConn then playerRenderConn:Disconnect() end
+        playerRenderConn = RunService.RenderStepped:Connect(updateAllPlayers)
         Notify{ Title = "👁️ ESP Player", Content = "Đã bật!", Duration = 2 }
     else
-        espRunning = false
-        if espTask then task.cancel(espTask); espTask = nil end
-        for _, obj in pairs(espObjects) do
-            if obj.Box then obj.Box.Visible = false end
-            if obj.Name then obj.Name.Visible = false end
-            if obj.Health then obj.Health.Visible = false end
-            if obj.Magnitude then obj.Magnitude.Visible = false end
-            if obj.Tracer then obj.Tracer.Visible = false end
-        end
+        if playerRenderConn then playerRenderConn:Disconnect(); playerRenderConn = nil end
+        clearAllPlayerBillboards()
         Notify{ Title = "👁️ ESP Player", Content = "Đã tắt.", Duration = 2 }
     end
 end)
 
-espUseTeamColor:OnChanged(updateESP)
-
-Players.PlayerRemoving:Connect(function(player)
-    if espObjects[player] then
-        for _, obj in pairs(espObjects[player]) do
-            if obj and obj.Remove then obj:Remove() end
-        end
-        espObjects[player] = nil
-    end
-end)
+espUseTeamColor:OnChanged(function() updateAllPlayers() end)
+Players.PlayerAdded:Connect(function(player) if espToggle.Value then createPlayerBillboard(player) end end)
+Players.PlayerRemoving:Connect(function(player) removePlayerBillboard(player) end)
 
 -- =============================================
--- ESP GOD (tìm trong folder Resources)
+-- 2. ESP GOD
 -- =============================================
 local espGodToggle = ESPTab:CreateToggle("espGodToggle", { Title = "✨ ESP God (trong Resources)", Default = false })
+local godBillboards = {}
+local godRenderConn = nil
+local godNames = { "Ancient God", "Furious God", "Hateful God", "Lonely God", "Miserable God", "Old God", "Sleeping God", "Wealthy God" }
 
-local godNames = {
-    "Ancient God",
-    "Furious God",
-    "Hateful God",
-    "Lonely God",
-    "Miserable God",
-    "Old God",
-    "Sleeping God",
-    "Wealthy God"
-}
-local godObjects = {}
-local godRunning = false
-local godTask = nil
-
-local function createGodDrawing(type)
-    if type == "Name" or type == "Distance" then
-        local txt = Drawing.new("Text")
-        txt.Visible = false
-        txt.ZIndex = 3
-        txt.Center = true
-        txt.Outline = true
-        txt.OutlineColor = Color3.fromRGB(0,0,0)
-        txt.Font = Drawing.Fonts.Monospace
-        txt.Size = 15
-        txt.Color = Color3.fromRGB(255, 100, 255)
-        txt.Transparency = 1
-        return txt
+local function clearAllGodBillboards()
+    for _, data in pairs(godBillboards) do
+        if data.Bill then data.Bill:Destroy() end
     end
+    table.clear(godBillboards)
 end
 
-local function updateGodESP()
-    if not espGodToggle.Value then
-        for _, obj in pairs(godObjects) do
-            if obj.Name then obj.Name.Visible = false end
-            if obj.Distance then obj.Distance.Visible = false end
-        end
-        return
-    end
-
+local function stepGodESP()
+    local resources = Workspace:FindFirstChild("Resources")
     local localChar = LocalPlayer.Character
-    if not localChar then return end
-    local localRoot = localChar:FindFirstChild("HumanoidRootPart")
-    if not localRoot then return end
+    local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
 
-    local resourcesFolder = Workspace:FindFirstChild("Resources")
-    if not resourcesFolder then return end
+    if not resources or not localRoot then return end
 
-    for _, model in ipairs(resourcesFolder:GetChildren()) do
-        if model:IsA("Model") and table.find(godNames, model.Name) then
+    for _, model in ipairs(resources:GetChildren()) do
+        if model:IsA("Model") and table.find(godNames, model.Name) and not godBillboards[model] then
             local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
             if primary then
-                if not godObjects[model] then
-                    godObjects[model] = {
-                        Name = createGodDrawing("Name"),
-                        Distance = createGodDrawing("Distance")
-                    }
-                end
-                local objs = godObjects[model]
-                local pos, onScreen = Camera:WorldToViewportPoint(primary.Position)
+                local bill = Instance.new("BillboardGui")
+                bill.Name = "GodESP"
+                bill.Size = UDim2.new(0, 200, 0, 35)
+                bill.Adornee = primary
+                bill.AlwaysOnTop = true
+                bill.StudsOffset = Vector3.new(0, 3, 0)
+                bill.Parent = primary
 
-                if onScreen then
-                    objs.Name.Text = model.Name
-                    objs.Name.Position = Vector2.new(pos.X, pos.Y - 20)
-                    objs.Name.Visible = true
+                -- Nền trong suốt
+                local bg = Instance.new("Frame")
+                bg.Size = UDim2.new(1, 0, 1, 0)
+                bg.BackgroundTransparency = 1
+                bg.BorderSizePixel = 0
+                bg.Parent = bill
 
-                    local dist = (primary.Position - localRoot.Position).Magnitude
-                    objs.Distance.Text = math.floor(dist) .. "m"
-                    objs.Distance.Position = Vector2.new(pos.X, pos.Y + 5)
-                    objs.Distance.Visible = true
-                else
-                    objs.Name.Visible = false
-                    objs.Distance.Visible = false
-                end
+                local label = Instance.new("TextLabel")
+                label.Size = UDim2.new(1, 0, 1, 0)
+                label.BackgroundTransparency = 1
+                label.Text = model.Name .. " (...m)"
+                label.TextColor3 = Color3.fromRGB(255, 100, 255)
+                label.Font = Enum.Font.SourceSans
+                label.TextSize = 18
+                label.Parent = bg
+                local stroke = Instance.new("UIStroke")
+                stroke.Thickness = 1.5
+                stroke.Parent = label
+
+                godBillboards[model] = { Bill = bill, Label = label, Part = primary }
             end
         end
     end
 
-    for model, objs in pairs(godObjects) do
-        if not model or not model.Parent then
-            if objs.Name then objs.Name.Visible = false end
-            if objs.Distance then objs.Distance.Visible = false end
-            godObjects[model] = nil
+    for model, data in pairs(godBillboards) do
+        if not model.Parent then
+            if data.Bill then data.Bill:Destroy() end
+            godBillboards[model] = nil
+        else
+            local dist = (data.Part.Position - localRoot.Position).Magnitude
+            data.Label.Text = model.Name .. " (" .. math.floor(dist) .. "m)"
         end
-    end
-end
-
-local function godUpdateLoop()
-    while godRunning do
-        task.wait(0.15)
-        updateGodESP()
     end
 end
 
 espGodToggle:OnChanged(function(v)
     if v then
-        godRunning = true
-        if godTask then task.cancel(godTask) end
-        godTask = task.spawn(godUpdateLoop)
+        if godRenderConn then godRenderConn:Disconnect() end
+        godRenderConn = RunService.RenderStepped:Connect(stepGodESP)
         Notify{ Title = "✨ ESP God", Content = "Đã bật!", Duration = 2 }
     else
-        godRunning = false
-        if godTask then task.cancel(godTask); godTask = nil end
-        for _, objs in pairs(godObjects) do
-            if objs.Name then objs.Name.Visible = false end
-            if objs.Distance then objs.Distance.Visible = false end
-        end
+        if godRenderConn then godRenderConn:Disconnect(); godRenderConn = nil end
+        clearAllGodBillboards()
         Notify{ Title = "✨ ESP God", Content = "Đã tắt.", Duration = 2 }
+    end
+end)
+
+-- =============================================
+-- 3. ESP ORE
+-- =============================================
+local oreDisplayToOriginal = {
+    ["Rich Adurite"] = "Adurite Rich Rock",
+    ["Adurite"] = "Adurite Rock",
+    ["Coal"] = "Coal Node",
+    ["Gold"] = "Gold Node",
+    ["Iron"] = "Iron Node",
+    ["Stone"] = "Stone Node",
+    ["Emerald"] = "Emerald Lode",
+    ["Crystal"] = "Crystal Lode"
+}
+local oreDisplayNames = {"Rich Adurite", "Adurite", "Coal", "Gold", "Iron", "Stone", "Emerald", "Crystal"}
+
+local selectedOres = { "Rich Adurite", "Adurite" }
+
+local oreDropdown = ESPTab:CreateDropdown("oreDropdown", {
+    Title = "⛏️ Chọn loại Ore (Multi)",
+    Values = oreDisplayNames,
+    Default = { ["Rich Adurite"] = true, ["Adurite"] = true },
+    Multi = true
+})
+
+oreDropdown:OnChanged(function(value)
+    selectedOres = {}
+    for name, state in pairs(value) do
+        if state then table.insert(selectedOres, name) end
+    end
+end)
+
+local espOreToggle = ESPTab:CreateToggle("espOreToggle", { Title = "👁️ ESP Ore", Default = false })
+local oreBillboards = {}
+local oreRenderConn = nil
+
+local function clearAllOreBillboards()
+    for _, data in pairs(oreBillboards) do
+        if data.Bill then data.Bill:Destroy() end
+    end
+    table.clear(oreBillboards)
+end
+
+local function stepOreESP()
+    if #selectedOres == 0 then clearAllOreBillboards(); return end
+
+    local resources = Workspace:FindFirstChild("Resources")
+    local localChar = LocalPlayer.Character
+    local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+
+    if not resources or not localRoot then return end
+
+    local targetOriginalNames = {}
+    for _, displayName in ipairs(selectedOres) do
+        local original = oreDisplayToOriginal[displayName]
+        if original then targetOriginalNames[original] = true end
+    end
+
+    for _, model in ipairs(resources:GetChildren()) do
+        if model:IsA("Model") and targetOriginalNames[model.Name] and not oreBillboards[model] then
+            local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+            if primary then
+                local displayName = model.Name
+                for d, o in pairs(oreDisplayToOriginal) do
+                    if o == model.Name then displayName = d; break end
+                end
+
+                local bill = Instance.new("BillboardGui")
+                bill.Name = "OreESP"
+                bill.Size = UDim2.new(0, 200, 0, 35)
+                bill.Adornee = primary
+                bill.AlwaysOnTop = true
+                bill.StudsOffset = Vector3.new(0, 2, 0)
+                bill.Parent = primary
+
+                -- Nền trong suốt
+                local bg = Instance.new("Frame")
+                bg.Size = UDim2.new(1, 0, 1, 0)
+                bg.BackgroundTransparency = 1
+                bg.BorderSizePixel = 0
+                bg.Parent = bill
+
+                local label = Instance.new("TextLabel")
+                label.Size = UDim2.new(1, 0, 1, 0)
+                label.BackgroundTransparency = 1
+                label.Text = displayName .. " (...m)"
+                label.TextColor3 = Color3.fromRGB(255, 215, 0)
+                label.Font = Enum.Font.SourceSans
+                label.TextSize = 18
+                label.Parent = bg
+                local stroke = Instance.new("UIStroke")
+                stroke.Thickness = 1.5
+                stroke.Parent = label
+
+                oreBillboards[model] = { Bill = bill, Label = label, DisplayName = displayName, Part = primary }
+            end
+        end
+    end
+
+    for model, data in pairs(oreBillboards) do
+        if not model.Parent or not targetOriginalNames[model.Name] then
+            if data.Bill then data.Bill:Destroy() end
+            oreBillboards[model] = nil
+        else
+            local dist = (data.Part.Position - localRoot.Position).Magnitude
+            data.Label.Text = data.DisplayName .. " (" .. math.floor(dist) .. "m)"
+        end
+    end
+end
+
+espOreToggle:OnChanged(function(v)
+    if v then
+        if oreRenderConn then oreRenderConn:Disconnect() end
+        oreRenderConn = RunService.RenderStepped:Connect(stepOreESP)
+        Notify{ Title = "⛏️ ESP Ore", Content = "Đã bật!", Duration = 2 }
+    else
+        if oreRenderConn then oreRenderConn:Disconnect(); oreRenderConn = nil end
+        clearAllOreBillboards()
+        Notify{ Title = "⛏️ ESP Ore", Content = "Đã tắt.", Duration = 2 }
     end
 end)
 
@@ -780,6 +853,34 @@ MiscTab:CreateButton({
         end
     end
 })
+
+-- =============================================
+-- MAX ZOOM (Vô cực)
+-- =============================================
+-- =============================================
+-- MAX ZOOM (Vô cực) - Dành cho Fluent UI
+-- =============================================
+local zoomToggle = MiscTab:CreateToggle("zoomToggle", { Title = "🔭 Zoom vô cực (MaxZoomDistance)", Default = false })
+local zoomCon
+
+zoomToggle:OnChanged(function(v)
+    if zoomCon then zoomCon:Disconnect() end
+    if v then
+        zoomCon = RunService.RenderStepped:Connect(function()
+            pcall(function()
+                workspace.CurrentCamera.MaxZoomDistance = 999999999
+                workspace.CurrentCamera.MinZoomDistance = 0.5
+            end)
+        end)
+        Notify{ Title = "🔭 Zoom", Content = "Đã bật zoom vô cực!", Duration = 2 }
+    else
+        pcall(function()
+            workspace.CurrentCamera.MaxZoomDistance = 400
+            workspace.CurrentCamera.MinZoomDistance = 1
+        end)
+        Notify{ Title = "🔭 Zoom", Content = "Đã tắt.", Duration = 2 }
+    end
+end)
 
 -- =============================================
 -- FULLBRIGHT
