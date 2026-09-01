@@ -1,11 +1,9 @@
 -- =============================================
--- BOOGA TOOLS PRO – FLUENT 4 TABS (FULL)
+-- BOOGA TOOLS PRO – RAYFIELD VERSION (FULL + AUTO FARM + AUTO EAT)
 -- =============================================
 
--- LOAD FLUENT UI
-local Library = loadstring(game:HttpGetAsync("https://github.com/1dontgiveaf/Fluent-Renewed/releases/download/v1.0/Fluent.luau"))()
-local SaveManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/1dontgiveaf/Fluent-Renewed/refs/heads/main/Addons/SaveManager.luau"))()
-local InterfaceManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/1dontgiveaf/Fluent-Renewed/refs/heads/main/Addons/InterfaceManager.luau"))()
+-- LOAD RAYFIELD UI
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 -- ===== SERVICES =====
 local Players = game:GetService("Players")
@@ -18,6 +16,9 @@ local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
 
 -- ===== CHECK DRAWING SUPPORT =====
 local hasDrawing = pcall(function() return Drawing end)
@@ -25,25 +26,48 @@ if not hasDrawing then
     error("Executor does not support Drawing library!")
 end
 
--- ===== NHÂN VẬT CHÍNH =====
+-- ===== MAIN CHARACTER =====
 local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local hum = char:WaitForChild("Humanoid")
 
--- ===== TẮT THÔNG BÁO KHI KÉO SLIDER =====
+-- ===== SYSTEM STATES =====
 local notifyEnabled = true
+local warningEnabled = false
+local hitboxActive = false
+local autoHealEnabled = false
+local autoHealV2Enabled = false
+local espEnabled = false
+local espTeamColorEnabled = false
+local espOreEnabled = false
+local espGodEnabled = false
+local fullbrightEnabled = false
+local noFogEnabled = false
+local speedEnabled = false
+local speedValue = 16
+local climbEnabled = false
+local gravityEnabled = false
+local gravityValue = 196.2
+local zoomEnabled = false
+
+-- ===== NOTIFY WRAPPER =====
 local function Notify(args)
     if notifyEnabled then
-        Library:Notify(args)
+        Rayfield:Notify({
+            Title = args.Title or "Notification",
+            Content = args.Content or "",
+            Duration = args.Duration or 3,
+            Image = 4483362458
+        })
     end
 end
 
--- ===== HÀM KIỂM TRA TEAM =====
+-- ===== TEAM CHECK =====
 local function isSameTeam(player)
     if not player or not LocalPlayer then return false end
-    
+
     local playerTeam = nil
     local myTeam = nil
-    
+
     if player.Team then
         playerTeam = player.Team.Name
     elseif player.TeamColor then
@@ -51,7 +75,7 @@ local function isSameTeam(player)
     else
         playerTeam = "NoTribe"
     end
-    
+
     if LocalPlayer.Team then
         myTeam = LocalPlayer.Team.Name
     elseif LocalPlayer.TeamColor then
@@ -59,82 +83,51 @@ local function isSameTeam(player)
     else
         myTeam = "NoTribe"
     end
-    
+
     if playerTeam == "NoTribe" or myTeam == "NoTribe" then
         return false
     end
-    
+
     if player.Team and LocalPlayer.Team then
         return player.Team == LocalPlayer.Team
     elseif player.TeamColor and LocalPlayer.TeamColor then
         return player.TeamColor == LocalPlayer.TeamColor
     end
-    
+
     return false
 end
 
--- ===== TẠO CỬA SỔ =====
-local Window = Library:CreateWindow{
-    Title = "Booga Tools Pro",
-    SubTitle = "4 Tabs Version",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(550, 750),
-    Resize = true,
-    MinSize = Vector2.new(400, 500),
-    Acrylic = true,
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
-}
+-- ===== CREATE WINDOW =====
+local Window = Rayfield:CreateWindow({
+    Name = "Booga Tools Pro",
+    LoadingTitle = "Booga Tools Pro",
+    LoadingSubtitle = "Rayfield Version",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "BoogaToolsPro",
+        FileName = "Config"
+    },
+    Discord = {
+        Enabled = false,
+        Invite = "noinvite",
+        RememberJoins = true
+    },
+    KeySystem = false
+})
 
 -- =============================================
--- AUTO RESIZE GUI (PC + MOBILE)
+-- TABS
 -- =============================================
-local function autoResizeGUI()
-    local viewportSize = Camera.ViewportSize
-    local screenWidth = viewportSize.X
-    local screenHeight = viewportSize.Y
-    
-    local isMobile = screenWidth < 800 or UserInputService.TouchEnabled
-    
-    local windowWidth = isMobile and math.min(screenWidth * 0.9, 500) or 550
-    local windowHeight = isMobile and math.min(screenHeight * 0.85, 600) or 750
-    local tabWidth = isMobile and math.min(screenWidth * 0.15, 120) or 160
-    
-    pcall(function()
-        Window:SetSize(UDim2.fromOffset(windowWidth, windowHeight))
-        Window:SetTabWidth(tabWidth)
-    end)
-    
-    local fluentGui
-    for _, gui in pairs(LocalPlayer.PlayerGui:GetChildren()) do
-        if gui:IsA("ScreenGui") and gui.Name:find("Fluent") then
-            fluentGui = gui
-            break
-        end
-    end
-    
-    if fluentGui then
-        local mainFrame = fluentGui:FindFirstChild("Main")
-        if mainFrame and mainFrame:IsA("Frame") then
-            if isMobile then
-                mainFrame.Position = UDim2.new(0.05, 0, 0.05, 0)
-                mainFrame.Size = UDim2.new(0.9, 0, 0.9, 0)
-            end
-        end
-    end
-end
-
-Camera:GetPropertyChangedSignal("ViewportSize"):Connect(autoResizeGUI)
+local CombatTab = Window:CreateTab("Combat", 4483362458)
+local ESPTab = Window:CreateTab("ESP", 4483362458)
+local AutoFarmTab = Window:CreateTab("Auto Farm", 4483362458)
+local MiscTab = Window:CreateTab("Misc", 4483362458)
+local SettingsTab = Window:CreateTab("Settings", 4483362458)
 
 -- =============================================
 -- TAB 1: COMBAT
 -- =============================================
-local CombatTab = Window:AddTab({ Title = "Combat", Icon = "crosshair" })
 
--- =============================================
--- CẢNH BÁO 100 STUD
--- =============================================
-local warningToggle = CombatTab:CreateToggle("warningToggle", { Title = "🔔 Cảnh báo 100 stud (có âm thanh)", Default = false })
 local warningLoop
 local lastWarningTime = 0
 local warningSound = nil
@@ -149,73 +142,72 @@ local function createWarningSound()
     end
 end
 
-warningToggle:OnChanged(function(v)
-    if warningLoop then warningLoop:Disconnect() end
-    if v then
-        createWarningSound()
-        warningLoop = RunService.Heartbeat:Connect(function()
-            if not LocalPlayer.Character then return end
-            local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if not hrp then return end
-            
-            local warnPlayers = {}
-            for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer then
-                    if isSameTeam(player) then continue end
-                    local char = player.Character
-                    if char then
-                        local root = char:FindFirstChild("HumanoidRootPart")
-                        if root then
-                            local dist = (root.Position - hrp.Position).Magnitude
-                            if dist <= 100 then
-                                table.insert(warnPlayers, {Name = player.Name, Dist = math.floor(dist)})
+CombatTab:CreateToggle({
+    Name = "Proximity Warning (100 studs)",
+    CurrentValue = false,
+    Flag = "warningToggle",
+    Callback = function(v)
+        warningEnabled = v
+        if warningLoop then warningLoop:Disconnect() end
+        if v then
+            createWarningSound()
+            warningLoop = RunService.Heartbeat:Connect(function()
+                if not warningEnabled then return end
+                if not LocalPlayer.Character then return end
+                local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+
+                local warnPlayers = {}
+                for _, player in pairs(Players:GetPlayers()) do
+                    if player ~= LocalPlayer then
+                        if isSameTeam(player) then continue end
+                        local pchar = player.Character
+                        if pchar then
+                            local root = pchar:FindFirstChild("HumanoidRootPart")
+                            if root then
+                                local dist = (root.Position - hrp.Position).Magnitude
+                                if dist <= 100 then
+                                    table.insert(warnPlayers, {Name = player.Name, Dist = math.floor(dist)})
+                                end
                             end
                         end
                     end
                 end
-            end
-            if #warnPlayers > 0 and os.time() - lastWarningTime >= 5 then
-                local names = ""
-                for i, p in ipairs(warnPlayers) do
-                    names = names .. p.Name .. " (" .. p.Dist .. "m) "
-                    if i >= 3 then
-                        names = names .. "và " .. (#warnPlayers - i) .. " người khác"
-                        break
+                if #warnPlayers > 0 and os.time() - lastWarningTime >= 5 then
+                    local names = ""
+                    for i, p in ipairs(warnPlayers) do
+                        names = names .. p.Name .. " (" .. p.Dist .. "m) "
+                        if i >= 3 then
+                            names = names .. "and " .. (#warnPlayers - i) .. " more"
+                            break
+                        end
+                    end
+                    Notify{
+                        Title = "Enemy Nearby",
+                        Content = #warnPlayers .. " players within 100 studs\n" .. names,
+                        Duration = 5
+                    }
+                    lastWarningTime = os.time()
+                    if warningSound then
+                        warningSound:Stop()
+                        warningSound:Play()
                     end
                 end
-                Notify{
-                    Title = "🔴 CẢNH BÁO!",
-                    Content = "Có " .. #warnPlayers .. " người trong bán kính 100 stud!\n" .. names,
-                    Duration = 5
-                }
-                lastWarningTime = os.time()
-                if warningSound then
-                    warningSound:Stop()
-                    warningSound:Play()
-                end
-            end
-        end)
-        Notify{ Title = "🔔 Cảnh báo 100 stud", Content = "Đã bật!", Duration = 2 }
-    else
-        if warningSound then
-            warningSound:Stop()
+            end)
+            Notify{ Title = "Proximity Warning", Content = "Enabled", Duration = 2 }
+        else
+            if warningSound then warningSound:Stop() end
+            Notify{ Title = "Proximity Warning", Content = "Disabled", Duration = 2 }
         end
-        Notify{ Title = "🔔 Cảnh báo 100 stud", Content = "Đã tắt.", Duration = 2 }
     end
-end)
+})
 
-
-
--- =============================================
--- HITBOX ĐỘNG
--- =============================================
-local hitboxToggle = CombatTab:CreateToggle("hitboxToggle", { Title = "🔴 Hitbox động (theo khoảng cách)", Default = false })
 local hitboxLoop = nil
 local hitboxFullSize = Vector3.new(15, 15, 15)
 local hitboxDefaultSize = Vector3.new(2, 1, 1)
 
 local function updateHitbox()
-    if not hitboxToggle.Value then return end
+    if not hitboxActive then return end
     if not LocalPlayer.Character then return end
     local localRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not localRoot then return end
@@ -223,9 +215,9 @@ local function updateHitbox()
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
             if isSameTeam(player) then continue end
-            local char = player.Character
-            if char then
-                local rootPart = char:FindFirstChild("HumanoidRootPart")
+            local pchar = player.Character
+            if pchar then
+                local rootPart = pchar:FindFirstChild("HumanoidRootPart")
                 if rootPart then
                     local dist = (rootPart.Position - localRoot.Position).Magnitude
                     local size
@@ -246,39 +238,39 @@ local function updateHitbox()
     end
 end
 
-hitboxToggle:OnChanged(function(v)
-    if hitboxLoop then hitboxLoop:Disconnect() end
-    if v then
-        hitboxLoop = RunService.RenderStepped:Connect(updateHitbox)
-        Notify{ Title = "🔴 Hitbox động", Content = "Đã bật! 10 stud = 15, 5 stud = 2.", Duration = 3 }
-    else
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer then
-                local char = player.Character
-                if char then
-                    local rootPart = char:FindFirstChild("HumanoidRootPart")
-                    if rootPart then
-                        rootPart.Size = hitboxDefaultSize
-                        rootPart.Transparency = 0
-                        rootPart.Color = Color3.fromRGB(255, 255, 255)
+CombatTab:CreateToggle({
+    Name = "Dynamic Hitbox",
+    CurrentValue = false,
+    Flag = "hitboxToggle",
+    Callback = function(v)
+        hitboxActive = v
+        if hitboxLoop then hitboxLoop:Disconnect() end
+        if v then
+            hitboxLoop = RunService.RenderStepped:Connect(updateHitbox)
+            Notify{ Title = "Dynamic Hitbox", Content = "Enabled", Duration = 2 }
+        else
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer then
+                    local pchar = player.Character
+                    if pchar then
+                        local rootPart = pchar:FindFirstChild("HumanoidRootPart")
+                        if rootPart then
+                            rootPart.Size = hitboxDefaultSize
+                            rootPart.Transparency = 0
+                            rootPart.Color = Color3.fromRGB(255, 255, 255)
+                        end
                     end
                 end
             end
+            Notify{ Title = "Dynamic Hitbox", Content = "Disabled", Duration = 2 }
         end
-        Notify{ Title = "🔴 Hitbox động", Content = "Đã tắt.", Duration = 2 }
     end
-end)
+})
 
-
-
--- =============================================
--- AUTO HEAL V1 (LayoutOrder động)
--- =============================================
-local autoHealToggle = CombatTab:CreateToggle("autoHealToggle", { Title = "❤️ Auto Heal (Bloodfruit - cực nhanh)", Default = false })
 local healRunning = false
 local healTask = nil
-
 local byteNetRemote = nil
+
 local function getByteNetRemote()
     if not byteNetRemote then
         byteNetRemote = ReplicatedStorage:FindFirstChild("ByteNetReliable")
@@ -296,7 +288,7 @@ local function getBloodfruitLayoutOrder()
         if not inventory then return nil end
         local list = inventory:FindFirstChild("List")
         if not list then return nil end
-        
+
         for _, child in ipairs(list:GetChildren()) do
             if child:IsA("ImageLabel") and child.Name == "Bloodfruit" then
                 return child.LayoutOrder
@@ -304,19 +296,14 @@ local function getBloodfruitLayoutOrder()
         end
         return nil
     end)
-    
-    if success then
-        return result
-    end
+
+    if success then return result end
     return nil
 end
 
--- Tạo buffer động dựa trên LayoutOrder của Bloodfruit
 local function createHealBufferDynamic()
     local layoutOrder = getBloodfruitLayoutOrder()
-    if not layoutOrder then
-        return nil
-    end
+    if not layoutOrder then return nil end
     local bytes = { 0, 67, layoutOrder, 0 }
     local b = buffer.create(#bytes)
     for i = 1, #bytes do
@@ -325,201 +312,149 @@ local function createHealBufferDynamic()
     return b
 end
 
--- Gửi heal với buffer động
 local function sendHeal()
     local event = getByteNetRemote()
     if not event then return false end
-    
     local bufferData = createHealBufferDynamic()
     if not bufferData then return false end
-    
-    pcall(function()
-        event:FireServer(bufferData, nil)
-    end)
+    pcall(function() event:FireServer(bufferData, nil) end)
     return true
 end
 
 local function healLoopFunction()
     while healRunning do
-        if not autoHealToggle.Value then
-            break
-        end
-        
-        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-        if not hum then
+        if not autoHealEnabled then break end
+
+        local currentHum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+        if not currentHum then
             task.wait(0.1)
             continue
         end
-        
-        if hum.Health < 100 then
+
+        if currentHum.Health < 100 then
             local startTime = tick()
-            while healRunning and autoHealToggle.Value and LocalPlayer.Character do
-                local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
-                if not hum then break end
-                
-                if hum.Health >= 100 then
-                    break
-                end
-                
+            while healRunning and autoHealEnabled and LocalPlayer.Character do
+                currentHum = LocalPlayer.Character:FindFirstChild("Humanoid")
+                if not currentHum then break end
+                if currentHum.Health >= 100 then break end
                 sendHeal()
                 task.wait(0.0001)
-                
-                if tick() - startTime > 2 then
-                    break
-                end
+                if tick() - startTime > 2 then break end
             end
         end
-        
+
         task.wait(0.1)
     end
 end
 
-autoHealToggle:OnChanged(function(v)
-    if healTask then
-        task.cancel(healTask)
-        healTask = nil
-    end
-    
-    if v then
-        if not getByteNetRemote() then
-            Notify{
-                Title = "Lỗi",
-                Content = "Không tìm thấy ByteNetReliable!",
-                Duration = 5
-            }
-            autoHealToggle:SetValue(false)
-            return
-        end
-        
-        -- Kiểm tra xem có tìm thấy Bloodfruit không
-        local layoutOrder = getBloodfruitLayoutOrder()
-        if not layoutOrder then
-            Notify{
-                Title = "Lỗi",
-                Content = "Không tìm thấy Bloodfruit trong Inventory!",
-                Duration = 5
-            }
-            autoHealToggle:SetValue(false)
-            return
-        end
-        
-        healRunning = true
-        healTask = task.spawn(healLoopFunction)
-        Notify{ Title = "❤️ Auto Heal", Content = "Đã bật! LayoutOrder: " .. layoutOrder, Duration = 3 }
-    else
-        healRunning = false
-        Notify{ Title = "❤️ Auto Heal", Content = "Đã tắt.", Duration = 2 }
-    end
-end)
+local autoHealToggleObj
+autoHealToggleObj = CombatTab:CreateToggle({
+    Name = "Auto Heal (Bloodfruit)",
+    CurrentValue = false,
+    Flag = "autoHealToggle",
+    Callback = function(v)
+        autoHealEnabled = v
+        if healTask then task.cancel(healTask); healTask = nil end
 
--- =============================================
--- AUTO HEAL V2 (LayoutOrder động + gần địch)
--- =============================================
-local autoHealV2Toggle = CombatTab:CreateToggle("autoHealV2Toggle", { Title = "❤️‍🔥 Auto Heal V2 (gần địch < 7 stud)", Default = false })
+        if v then
+            if not getByteNetRemote() then
+                Notify{ Title = "Auto Heal", Content = "Disabled", Duration = 2 }
+                autoHealToggleObj:Set(false)
+                return
+            end
+            local layoutOrder = getBloodfruitLayoutOrder()
+            if not layoutOrder then
+                Notify{ Title = "Auto Heal", Content = "Disabled", Duration = 2 }
+                autoHealToggleObj:Set(false)
+                return
+            end
+            healRunning = true
+            healTask = task.spawn(healLoopFunction)
+            Notify{ Title = "Auto Heal", Content = "Enabled", Duration = 2 }
+        else
+            healRunning = false
+            Notify{ Title = "Auto Heal", Content = "Disabled", Duration = 2 }
+        end
+    end
+})
+
 local healV2Running = false
 local healV2Task = nil
 
 local function healV2LoopFunction()
     while healV2Running do
-        if not autoHealV2Toggle.Value then
-            break
-        end
-        
-        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-        if not hum then
+        if not autoHealV2Enabled then break end
+
+        local currentChar = LocalPlayer.Character
+        local hrp = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+
+        if not hrp then
             task.wait(0.1)
             continue
         end
-        
-        if hum.Health < 100 then
-            local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local hasEnemy = false
-                for _, player in pairs(Players:GetPlayers()) do
-                    if player ~= LocalPlayer then
-                        if isSameTeam(player) then continue end
-                        local char = player.Character
-                        if char then
-                            local root = char:FindFirstChild("HumanoidRootPart")
-                            if root then
-                                local dist = (root.Position - hrp.Position).Magnitude
-                                if dist <= 7 then
-                                    hasEnemy = true
-                                    break
-                                end
-                            end
-                        end
-                    end
-                end
-                if hasEnemy then
-                    local startTime = tick()
-                    while healV2Running and autoHealV2Toggle.Value and LocalPlayer.Character do
-                        local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
-                        if not hum then break end
-                        if hum.Health >= 100 then break end
-                        
-                        sendHeal()
-                        task.wait(0.0001)
-                        
-                        if tick() - startTime > 2 then
-                            break
-                        end
+
+        local hasEnemy = false
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and not isSameTeam(player) then
+                local pChar = player.Character
+                local pRoot = pChar and pChar:FindFirstChild("HumanoidRootPart")
+                if pRoot then
+                    local dist = (pRoot.Position - hrp.Position).Magnitude
+                    if dist <= 7 then
+                        hasEnemy = true
+                        break
                     end
                 end
             end
         end
-        
+
+        if hasEnemy then
+            local startTime = tick()
+            while healV2Running and autoHealV2Enabled and LocalPlayer.Character do
+                sendHeal()
+                task.wait()
+                if tick() - startTime > 2 then break end
+            end
+        end
+
         task.wait(0.1)
     end
 end
 
-autoHealV2Toggle:OnChanged(function(v)
-    if healV2Task then
-        task.cancel(healV2Task)
-        healV2Task = nil
-    end
-    
-    if v then
-        if not getByteNetRemote() then
-            Notify{
-                Title = "Lỗi",
-                Content = "Không tìm thấy ByteNetReliable!",
-                Duration = 5
-            }
-            autoHealV2Toggle:SetValue(false)
-            return
+local autoHealV2ToggleObj
+autoHealV2ToggleObj = CombatTab:CreateToggle({
+    Name = "Auto Heal V2 (Enemy nearby)",
+    CurrentValue = false,
+    Flag = "autoHealV2Toggle",
+    Callback = function(v)
+        autoHealV2Enabled = v
+        if healV2Task then task.cancel(healV2Task); healV2Task = nil end
+
+        if v then
+            if not getByteNetRemote() then
+                Notify{ Title = "Auto Heal V2", Content = "Disabled", Duration = 2 }
+                autoHealV2ToggleObj:Set(false)
+                return
+            end
+            local layoutOrder = getBloodfruitLayoutOrder()
+            if layoutOrder == nil then
+                Notify{ Title = "Auto Heal V2", Content = "Disabled", Duration = 2 }
+                autoHealV2ToggleObj:Set(false)
+                return
+            end
+            healV2Running = true
+            healV2Task = task.spawn(healV2LoopFunction)
+            Notify{ Title = "Auto Heal V2", Content = "Enabled", Duration = 2 }
+        else
+            healV2Running = false
+            Notify{ Title = "Auto Heal V2", Content = "Disabled", Duration = 2 }
         end
-        
-        local layoutOrder = getBloodfruitLayoutOrder()
-        if not layoutOrder then
-            Notify{
-                Title = "Lỗi",
-                Content = "Không tìm thấy Bloodfruit trong Inventory!",
-                Duration = 5
-            }
-            autoHealV2Toggle:SetValue(false)
-            return
-        end
-        
-        healV2Running = true
-        healV2Task = task.spawn(healV2LoopFunction)
-        Notify{ Title = "❤️‍🔥 Auto Heal V2", Content = "Đã bật! LayoutOrder: " .. layoutOrder, Duration = 3 }
-    else
-        healV2Running = false
-        Notify{ Title = "❤️‍🔥 Auto Heal V2", Content = "Đã tắt.", Duration = 2 }
     end
-end)
+})
 
 -- =============================================
--- TAB 2: ESP (NỀN TRONG SUỐT)
+-- TAB 2: ESP
 -- =============================================
-local ESPTab = Window:AddTab({ Title = "ESP", Icon = "eye" })
-
--- =============================================
--- ESP PLAYER
--- =============================================
-local espToggle = ESPTab:CreateToggle("espToggle", { Title = "👁️ ESP Player (Tên + Máu + Khoảng cách)", Default = false })
-local espUseTeamColor = ESPTab:CreateToggle("espTeamColor", { Title = "🎨 ESP theo màu đội", Default = false })
 
 local playerBillboards = {}
 local playerConnections = {}
@@ -527,9 +462,7 @@ local playerRenderConn = nil
 
 local function removePlayerBillboard(player)
     local data = playerBillboards[player]
-    if data and data.Bill then
-        data.Bill:Destroy()
-    end
+    if data and data.Bill then data.Bill:Destroy() end
     playerBillboards[player] = nil
     if playerConnections[player] then
         playerConnections[player]:Disconnect()
@@ -539,9 +472,9 @@ end
 
 local function createPlayerBillboard(player)
     if player == LocalPlayer or playerBillboards[player] then return end
-    local char = player.Character
-    if not char then return end
-    local head = char:FindFirstChild("Head")
+    local pchar = player.Character
+    if not pchar then return end
+    local head = pchar:FindFirstChild("Head")
     if not head then return end
 
     local bill = Instance.new("BillboardGui")
@@ -552,7 +485,6 @@ local function createPlayerBillboard(player)
     bill.StudsOffset = Vector3.new(0, 2.5, 0)
     bill.Parent = head
 
-    -- Nền trong suốt
     local bg = Instance.new("Frame")
     bg.Size = UDim2.new(1, 0, 1, 0)
     bg.BackgroundTransparency = 1
@@ -567,26 +499,26 @@ local function createPlayerBillboard(player)
     nameLabel.Font = Enum.Font.SourceSans
     nameLabel.TextSize = 18
     nameLabel.Parent = bg
-    local strokeName = Instance.new("UIStroke")
-    strokeName.Thickness = 1.5
-    strokeName.Color = Color3.fromRGB(0, 0, 0)
-    strokeName.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    strokeName.Parent = nameLabel
+    local sn = Instance.new("UIStroke")
+    sn.Thickness = 1.5
+    sn.Color = Color3.fromRGB(0, 0, 0)
+    sn.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    sn.Parent = nameLabel
 
     local healthLabel = Instance.new("TextLabel")
     healthLabel.Size = UDim2.new(1, 0, 0.3, 0)
     healthLabel.Position = UDim2.new(0, 0, 0.35, 0)
     healthLabel.BackgroundTransparency = 1
-    healthLabel.Text = "♥ 100%"
+    healthLabel.Text = "HP 100%"
     healthLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
     healthLabel.Font = Enum.Font.SourceSans
     healthLabel.TextSize = 16
     healthLabel.Parent = bg
-    local strokeHealth = Instance.new("UIStroke")
-    strokeHealth.Thickness = 1.5
-    strokeHealth.Color = Color3.fromRGB(0, 0, 0)
-    strokeHealth.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    strokeHealth.Parent = healthLabel
+    local sh = Instance.new("UIStroke")
+    sh.Thickness = 1.5
+    sh.Color = Color3.fromRGB(0, 0, 0)
+    sh.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    sh.Parent = healthLabel
 
     local distLabel = Instance.new("TextLabel")
     distLabel.Size = UDim2.new(1, 0, 0.35, 0)
@@ -597,23 +529,23 @@ local function createPlayerBillboard(player)
     distLabel.Font = Enum.Font.SourceSans
     distLabel.TextSize = 14
     distLabel.Parent = bg
-    local strokeDist = Instance.new("UIStroke")
-    strokeDist.Thickness = 1.5
-    strokeDist.Color = Color3.fromRGB(0, 0, 0)
-    strokeDist.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    strokeDist.Parent = distLabel
+    local sd = Instance.new("UIStroke")
+    sd.Thickness = 1.5
+    sd.Color = Color3.fromRGB(0, 0, 0)
+    sd.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    sd.Parent = distLabel
 
     playerBillboards[player] = { Bill = bill, Name = nameLabel, Health = healthLabel, Dist = distLabel }
 
     playerConnections[player] = player.CharacterAdded:Connect(function()
         removePlayerBillboard(player)
         task.wait(0.5)
-        if espToggle.Value then createPlayerBillboard(player) end
+        if espEnabled then createPlayerBillboard(player) end
     end)
 end
 
 local function clearAllPlayerBillboards()
-    for player, data in pairs(playerBillboards) do
+    for _, data in pairs(playerBillboards) do
         if data.Bill then data.Bill:Destroy() end
     end
     table.clear(playerBillboards)
@@ -626,19 +558,17 @@ local function updateAllPlayers()
     local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
 
     for player, data in pairs(playerBillboards) do
-        local char = player.Character
-        local humanoid = char and char:FindFirstChildWhichIsA("Humanoid")
-        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local pchar = player.Character
+        local humanoid = pchar and pchar:FindFirstChildWhichIsA("Humanoid")
+        local root = pchar and pchar:FindFirstChild("HumanoidRootPart")
 
         if humanoid and root and localRoot then
             local hp = math.floor((humanoid.Health / humanoid.MaxHealth) * 100)
-            data.Health.Text = "♥ " .. hp .. "%"
+            data.Health.Text = "HP " .. hp .. "%"
             data.Health.TextColor3 = hp > 50 and Color3.fromRGB(0, 255, 0) or (hp > 25 and Color3.fromRGB(255, 255, 0) or Color3.fromRGB(255, 0, 0))
-
             local dist = (root.Position - localRoot.Position).Magnitude
             data.Dist.Text = math.floor(dist) .. "m"
-
-            if espUseTeamColor.Value and player.TeamColor then
+            if espTeamColorEnabled and player.TeamColor then
                 data.Name.TextColor3 = player.TeamColor.Color
             else
                 data.Name.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -647,27 +577,38 @@ local function updateAllPlayers()
     end
 end
 
-espToggle:OnChanged(function(v)
-    if v then
-        for _, player in pairs(Players:GetPlayers()) do createPlayerBillboard(player) end
-        if playerRenderConn then playerRenderConn:Disconnect() end
-        playerRenderConn = RunService.RenderStepped:Connect(updateAllPlayers)
-        Notify{ Title = "👁️ ESP Player", Content = "Đã bật!", Duration = 2 }
-    else
-        if playerRenderConn then playerRenderConn:Disconnect(); playerRenderConn = nil end
-        clearAllPlayerBillboards()
-        Notify{ Title = "👁️ ESP Player", Content = "Đã tắt.", Duration = 2 }
+ESPTab:CreateToggle({
+    Name = "ESP Player (Name + HP + Distance)",
+    CurrentValue = false,
+    Flag = "espToggle",
+    Callback = function(v)
+        espEnabled = v
+        if v then
+            for _, player in pairs(Players:GetPlayers()) do createPlayerBillboard(player) end
+            if playerRenderConn then playerRenderConn:Disconnect() end
+            playerRenderConn = RunService.RenderStepped:Connect(updateAllPlayers)
+            Notify{ Title = "ESP Player", Content = "Enabled", Duration = 2 }
+        else
+            if playerRenderConn then playerRenderConn:Disconnect(); playerRenderConn = nil end
+            clearAllPlayerBillboards()
+            Notify{ Title = "ESP Player", Content = "Disabled", Duration = 2 }
+        end
     end
-end)
+})
 
-espUseTeamColor:OnChanged(function() updateAllPlayers() end)
-Players.PlayerAdded:Connect(function(player) if espToggle.Value then createPlayerBillboard(player) end end)
+ESPTab:CreateToggle({
+    Name = "ESP Team Color",
+    CurrentValue = false,
+    Flag = "espTeamColor",
+    Callback = function(v)
+        espTeamColorEnabled = v
+        updateAllPlayers()
+    end
+})
+
+Players.PlayerAdded:Connect(function(player) if espEnabled then createPlayerBillboard(player) end end)
 Players.PlayerRemoving:Connect(function(player) removePlayerBillboard(player) end)
 
--- =============================================
--- ESP GOD
--- =============================================
-local espGodToggle = ESPTab:CreateToggle("espGodToggle", { Title = "✨ ESP God (trong Resources)", Default = false })
 local godBillboards = {}
 local godRenderConn = nil
 local godNames = { "Ancient God", "Furious God", "Hateful God", "Lonely God", "Miserable God", "Old God", "Sleeping God", "Wealthy God" }
@@ -683,7 +624,6 @@ local function stepGodESP()
     local resources = Workspace:FindFirstChild("Resources")
     local localChar = LocalPlayer.Character
     local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
-
     if not resources or not localRoot then return end
 
     for _, model in ipairs(resources:GetChildren()) do
@@ -697,14 +637,11 @@ local function stepGodESP()
                 bill.AlwaysOnTop = true
                 bill.StudsOffset = Vector3.new(0, 3, 0)
                 bill.Parent = primary
-
-                -- Nền trong suốt
                 local bg = Instance.new("Frame")
                 bg.Size = UDim2.new(1, 0, 1, 0)
                 bg.BackgroundTransparency = 1
                 bg.BorderSizePixel = 0
                 bg.Parent = bill
-
                 local label = Instance.new("TextLabel")
                 label.Size = UDim2.new(1, 0, 1, 0)
                 label.BackgroundTransparency = 1
@@ -716,7 +653,6 @@ local function stepGodESP()
                 local stroke = Instance.new("UIStroke")
                 stroke.Thickness = 1.5
                 stroke.Parent = label
-
                 godBillboards[model] = { Bill = bill, Label = label, Part = primary }
             end
         end
@@ -733,21 +669,24 @@ local function stepGodESP()
     end
 end
 
-espGodToggle:OnChanged(function(v)
-    if v then
-        if godRenderConn then godRenderConn:Disconnect() end
-        godRenderConn = RunService.RenderStepped:Connect(stepGodESP)
-        Notify{ Title = "✨ ESP God", Content = "Đã bật!", Duration = 2 }
-    else
-        if godRenderConn then godRenderConn:Disconnect(); godRenderConn = nil end
-        clearAllGodBillboards()
-        Notify{ Title = "✨ ESP God", Content = "Đã tắt.", Duration = 2 }
+ESPTab:CreateToggle({
+    Name = "ESP God (Resources)",
+    CurrentValue = false,
+    Flag = "espGodToggle",
+    Callback = function(v)
+        espGodEnabled = v
+        if v then
+            if godRenderConn then godRenderConn:Disconnect() end
+            godRenderConn = RunService.RenderStepped:Connect(stepGodESP)
+            Notify{ Title = "ESP God", Content = "Enabled", Duration = 2 }
+        else
+            if godRenderConn then godRenderConn:Disconnect(); godRenderConn = nil end
+            clearAllGodBillboards()
+            Notify{ Title = "ESP God", Content = "Disabled", Duration = 2 }
+        end
     end
-end)
+})
 
--- =============================================
--- ESP ORE
--- =============================================
 local oreDisplayToOriginal = {
     ["Rich Adurite"] = "Adurite Rich Rock",
     ["Adurite"] = "Adurite Rock",
@@ -759,24 +698,19 @@ local oreDisplayToOriginal = {
     ["Crystal"] = "Crystal Lode"
 }
 local oreDisplayNames = {"Rich Adurite", "Adurite", "Coal", "Gold", "Iron", "Stone", "Emerald", "Crystal"}
-
 local selectedOres = { "Rich Adurite", "Adurite" }
 
-local oreDropdown = ESPTab:CreateDropdown("oreDropdown", {
-    Title = "⛏️ Chọn loại Ore (Multi)",
-    Values = oreDisplayNames,
-    Default = { ["Rich Adurite"] = true, ["Adurite"] = true },
-    Multi = true
+ESPTab:CreateDropdown({
+    Name = "Ore Selection (Multi)",
+    Options = oreDisplayNames,
+    CurrentValue = { "Rich Adurite", "Adurite" },
+    MultiSelect = true,
+    Flag = "oreDropdown",
+    Callback = function(value)
+        selectedOres = value
+    end
 })
 
-oreDropdown:OnChanged(function(value)
-    selectedOres = {}
-    for name, state in pairs(value) do
-        if state then table.insert(selectedOres, name) end
-    end
-end)
-
-local espOreToggle = ESPTab:CreateToggle("espOreToggle", { Title = "👁️ ESP Ore", Default = false })
 local oreBillboards = {}
 local oreRenderConn = nil
 
@@ -789,11 +723,9 @@ end
 
 local function stepOreESP()
     if #selectedOres == 0 then clearAllOreBillboards(); return end
-
     local resources = Workspace:FindFirstChild("Resources")
     local localChar = LocalPlayer.Character
     local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
-
     if not resources or not localRoot then return end
 
     local targetOriginalNames = {}
@@ -810,7 +742,6 @@ local function stepOreESP()
                 for d, o in pairs(oreDisplayToOriginal) do
                     if o == model.Name then displayName = d; break end
                 end
-
                 local bill = Instance.new("BillboardGui")
                 bill.Name = "OreESP"
                 bill.Size = UDim2.new(0, 200, 0, 35)
@@ -818,14 +749,11 @@ local function stepOreESP()
                 bill.AlwaysOnTop = true
                 bill.StudsOffset = Vector3.new(0, 2, 0)
                 bill.Parent = primary
-
-                -- Nền trong suốt
                 local bg = Instance.new("Frame")
                 bg.Size = UDim2.new(1, 0, 1, 0)
                 bg.BackgroundTransparency = 1
                 bg.BorderSizePixel = 0
                 bg.Parent = bill
-
                 local label = Instance.new("TextLabel")
                 label.Size = UDim2.new(1, 0, 1, 0)
                 label.BackgroundTransparency = 1
@@ -837,7 +765,6 @@ local function stepOreESP()
                 local stroke = Instance.new("UIStroke")
                 stroke.Thickness = 1.5
                 stroke.Parent = label
-
                 oreBillboards[model] = { Bill = bill, Label = label, DisplayName = displayName, Part = primary }
             end
         end
@@ -854,249 +781,905 @@ local function stepOreESP()
     end
 end
 
-espOreToggle:OnChanged(function(v)
-    if v then
-        if oreRenderConn then oreRenderConn:Disconnect() end
-        oreRenderConn = RunService.RenderStepped:Connect(stepOreESP)
-        Notify{ Title = "⛏️ ESP Ore", Content = "Đã bật!", Duration = 2 }
-    else
-        if oreRenderConn then oreRenderConn:Disconnect(); oreRenderConn = nil end
-        clearAllOreBillboards()
-        Notify{ Title = "⛏️ ESP Ore", Content = "Đã tắt.", Duration = 2 }
+ESPTab:CreateToggle({
+    Name = "ESP Ore",
+    CurrentValue = false,
+    Flag = "espOreToggle",
+    Callback = function(v)
+        espOreEnabled = v
+        if v then
+            if oreRenderConn then oreRenderConn:Disconnect() end
+            oreRenderConn = RunService.RenderStepped:Connect(stepOreESP)
+            Notify{ Title = "ESP Ore", Content = "Enabled", Duration = 2 }
+        else
+            if oreRenderConn then oreRenderConn:Disconnect(); oreRenderConn = nil end
+            clearAllOreBillboards()
+            Notify{ Title = "ESP Ore", Content = "Disabled", Duration = 2 }
+        end
     end
-end)
+})
 
 -- =============================================
--- TAB 3: MISC
+-- TAB 3: AUTO FARM
 -- =============================================
-local MiscTab = Window:AddTab({ Title = "Misc", Icon = "settings" })
+
+-- ======= SECTION 1: ICE CHUNK =======
+AutoFarmTab:CreateSection("Ice Chunk Farm")
+
+local autoChunkEnabled = false
+local autoClickEnabled = false
+local autoPickupEnabled = false
+local chunkDistance = 5
+local clickPositionMode = "Center"
+local zonePart = nil
+local processing = false
+local originalCFrame = nil
+local currentTween = nil
+local isTweening = false
+local chunkMonitorTask = nil
+local clickTask = nil
+local pickupTask = nil
+
+local function createZone()
+    if zonePart then return end
+    zonePart = Instance.new("Part")
+    zonePart.Name = "IceChunkZone"
+    zonePart.Size = Vector3.new(90, 30, 80)
+    zonePart.Position = Vector3.new(940, -2, -1411)
+    zonePart.Transparency = 1
+    zonePart.CanCollide = false
+    zonePart.Anchored = true
+    zonePart.Parent = Workspace
+end
+
+local function destroyZone()
+    if zonePart then zonePart:Destroy(); zonePart = nil end
+end
+
+local function isPlayerInZone()
+    if not zonePart then return false end
+    local currentChar = LocalPlayer.Character
+    local hrp = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    local zonePos = zonePart.Position
+    local zoneSize = zonePart.Size
+    local playerPos = hrp.Position
+    local halfX = zoneSize.X / 2
+    local halfY = zoneSize.Y / 2
+    local halfZ = zoneSize.Z / 2
+    return math.abs(playerPos.X - zonePos.X) <= halfX and math.abs(playerPos.Y - zonePos.Y) <= halfY and math.abs(playerPos.Z - zonePos.Z) <= halfZ
+end
+
+local function findIceChunkInZone()
+    if not zonePart then return nil end
+    local overlapParams = OverlapParams.new()
+    overlapParams.FilterType = Enum.RaycastFilterType.Include
+    local resources = Workspace:FindFirstChild("Resources")
+    if not resources then return nil end
+    overlapParams.FilterDescendantsInstances = {resources}
+    local partsInZone = Workspace:GetPartsInPart(zonePart, overlapParams)
+    for _, part in ipairs(partsInZone) do
+        local model = part:FindFirstAncestorOfClass("Model")
+        if model and model.Name == "Ice Chunk" then return model end
+    end
+    return nil
+end
+
+local function tweenToCFrame(targetCFrame)
+    local character = LocalPlayer.Character
+    if not character then return end
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then return end
+    local dist = (rootPart.Position - targetCFrame.Position).Magnitude
+    if dist < 0.5 then return end
+    local tweenInfo = TweenInfo.new(dist / 16, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+    local tween = TweenService:Create(rootPart, tweenInfo, {CFrame = targetCFrame})
+    currentTween = tween
+    isTweening = true
+    tween:Play()
+    tween.Completed:Wait()
+    currentTween = nil
+    isTweening = false
+end
+
+local function tweenPlayerToTarget(model)
+    local character = LocalPlayer.Character
+    if not character then return end
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+    originalCFrame = rootPart.CFrame
+    local modelPos = model:GetPivot().Position
+    local currentPos = rootPart.Position
+    local dir = (currentPos - modelPos).Magnitude > 0 and (currentPos - modelPos).Unit or Vector3.new(0, 0, 1)
+    local targetPos = modelPos + dir * chunkDistance
+    local targetCFrame = CFrame.new(targetPos, modelPos)
+    tweenToCFrame(targetCFrame)
+end
+
+local function tweenBack()
+    if not originalCFrame then return end
+    tweenToCFrame(originalCFrame)
+    originalCFrame = nil
+end
+
+local function monitorIceChunk()
+    if processing or isTweening then return end
+    if not isPlayerInZone() then return end
+    processing = true
+    local model = findIceChunkInZone()
+    if model then
+        tweenPlayerToTarget(model)
+        repeat task.wait(0.5) until not model.Parent or not autoChunkEnabled or not isPlayerInZone()
+        if autoChunkEnabled and isPlayerInZone() then tweenBack() end
+    end
+    processing = false
+end
+
+local function doAutoClick()
+    local vp = Workspace.CurrentCamera.ViewportSize
+    local inset = GuiService:GetGuiInset()
+    local centerX = vp.X / 2
+    local centerY = (vp.Y / 2) + inset.Y
+    if clickPositionMode == "Top Center" then
+        centerY = inset.Y + 50
+    end
+    VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 0)
+    task.wait(0.01)
+    VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 0)
+end
+
+local function createPickupBuffer(entityID)
+    local b = buffer.create(6)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, 59)
+    buffer.writeu32(b, 2, entityID)
+    return b
+end
+
+local function sendPickup(entityID)
+    local remote = getByteNetRemote()
+    if not remote then return false end
+    local b = createPickupBuffer(entityID)
+    pcall(function() remote:FireServer(b, nil) end)
+    return true
+end
+
+local function autoPickupLoop()
+    while autoPickupEnabled do
+        local currentChar = LocalPlayer.Character
+        local hrp = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+        if not hrp then task.wait(0.5); continue end
+        local itemsFolder = Workspace:FindFirstChild("Items")
+        if not itemsFolder then task.wait(0.5); continue end
+        for _, obj in ipairs(itemsFolder:GetChildren()) do
+            if not autoPickupEnabled then break end
+            local entityID = obj:GetAttribute("EntityID") or tonumber(obj.Name)
+            if not entityID then continue end
+            local pos
+            if obj:IsA("BasePart") then
+                pos = obj.Position
+            elseif obj:IsA("Model") then
+                local primary = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+                if primary then pos = primary.Position end
+            end
+            if not pos then continue end
+            if (pos - hrp.Position).Magnitude <= 30 then
+                sendPickup(entityID)
+                task.wait(0.05)
+            end
+        end
+        task.wait(0.2)
+    end
+end
+
+AutoFarmTab:CreateToggle({
+    Name = "Auto Ice Chunk (Zone required)",
+    CurrentValue = false,
+    Flag = "autoChunkToggle",
+    Callback = function(v)
+        autoChunkEnabled = v
+        if v then
+            createZone()
+            if chunkMonitorTask then task.cancel(chunkMonitorTask) end
+            chunkMonitorTask = task.spawn(function()
+                while autoChunkEnabled do
+                    if not processing and not isTweening then monitorIceChunk() end
+                    task.wait(1)
+                end
+            end)
+            Notify{ Title = "Auto Ice Chunk", Content = "Enabled", Duration = 2 }
+        else
+            destroyZone()
+            if currentTween then currentTween:Cancel(); currentTween = nil end
+            if chunkMonitorTask then task.cancel(chunkMonitorTask); chunkMonitorTask = nil end
+            isTweening = false
+            originalCFrame = nil
+            processing = false
+            Notify{ Title = "Auto Ice Chunk", Content = "Disabled", Duration = 2 }
+        end
+    end
+})
+
+AutoFarmTab:CreateSlider({
+    Name = "Chunk Distance",
+    Range = {2, 20},
+    Increment = 1,
+    CurrentValue = 5,
+    Flag = "chunkDistanceSlider",
+    Callback = function(v) chunkDistance = v end
+})
+
+AutoFarmTab:CreateToggle({
+    Name = "Auto Click",
+    CurrentValue = false,
+    Flag = "autoClickToggle",
+    Callback = function(v)
+        autoClickEnabled = v
+        if v then
+            if clickTask then task.cancel(clickTask) end
+            clickTask = task.spawn(function()
+                while autoClickEnabled do doAutoClick(); task.wait(0.1) end
+            end)
+            Notify{ Title = "Auto Click", Content = "Enabled", Duration = 2 }
+        else
+            if clickTask then task.cancel(clickTask); clickTask = nil end
+            Notify{ Title = "Auto Click", Content = "Disabled", Duration = 2 }
+        end
+    end
+})
+
+AutoFarmTab:CreateDropdown({
+    Name = "Click Position",
+    Options = {"Center", "Top Center"},
+    CurrentValue = "Center",
+    MultiSelect = false,
+    Flag = "clickPositionDropdown",
+    Callback = function(value)
+        if type(value) == "table" then
+            clickPositionMode = value[1] or "Center"
+        else
+            clickPositionMode = value
+        end
+    end
+})
+
+AutoFarmTab:CreateToggle({
+    Name = "Auto Pickup Items",
+    CurrentValue = false,
+    Flag = "autoPickupToggle",
+    Callback = function(v)
+        autoPickupEnabled = v
+        if v then
+            if pickupTask then task.cancel(pickupTask) end
+            pickupTask = task.spawn(autoPickupLoop)
+            Notify{ Title = "Auto Pickup", Content = "Enabled", Duration = 2 }
+        else
+            if pickupTask then task.cancel(pickupTask); pickupTask = nil end
+            Notify{ Title = "Auto Pickup", Content = "Disabled", Duration = 2 }
+        end
+    end
+})
+
+-- ======= SECTION 2: FRUIT FARM =======
+AutoFarmTab:CreateSection("Fruit Farm")
+
+local fruits = {
+    Bloodfruit = 94, Bluefruit = 377, Lemon = 99, Coconut = 1,
+    Jelly = 604, Banana = 606, Orange = 602, Oddberry = 32,
+    Berry = 35, Strangefruit = 302, Strawberry = 282,
+    Sunfruit = 128, Pumpkin = 80, ["Prickly Pear"] = 378,
+    Apple = 243, Barley = 247, Cloudberry = 101, Carrot = 147
+}
+local fruitNames = {"Bloodfruit", "Bluefruit", "Lemon", "Coconut", "Jelly", "Banana", "Orange", "Oddberry", "Berry", "Strangefruit", "Strawberry", "Sunfruit", "Pumpkin", "Prickly Pear", "Apple", "Barley", "Cloudberry", "Carrot"}
+
+local pickFruitEnabled = false
+local plantFruitEnabled = false
+local pickFruitRange = 15
+local plantFruitRange = 15
+local selectedFruit = "Bloodfruit"
+local pickFruitTask = nil
+local plantFruitTask = nil
+
+local function createPickFruitBuffer(entityID)
+    local b = buffer.create(6)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, 59)
+    buffer.writeu32(b, 2, entityID)
+    return b
+end
+
+local function createPlantFruitBuffer(entityID, fruitID)
+    local b = buffer.create(8)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, 96)
+    buffer.writeu32(b, 2, entityID)
+    buffer.writeu16(b, 6, fruitID)
+    return b
+end
+
+local function sendPickFruit(entityID)
+    local event = getByteNetRemote()
+    if not event then return false end
+    pcall(function() event:FireServer(createPickFruitBuffer(entityID), nil) end)
+    return true
+end
+
+local function sendPlantFruit(entityID, fruitID)
+    local event = getByteNetRemote()
+    if not event then return false end
+    pcall(function() event:FireServer(createPlantFruitBuffer(entityID, fruitID), nil) end)
+    return true
+end
+
+local function pickFruitLoop()
+    while pickFruitEnabled do
+        local currentChar = LocalPlayer.Character
+        local hrp = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+        local cropsFolder = Workspace:FindFirstChild("Crops")
+        if hrp and cropsFolder then
+            for _, item in ipairs(cropsFolder:GetChildren()) do
+                if not pickFruitEnabled then break end
+                local entityID = item:GetAttribute("EntityID")
+                if entityID then
+                    local primary = item:IsA("BasePart") and item or (item:IsA("Model") and (item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart")))
+                    if primary and (primary.Position - hrp.Position).Magnitude <= pickFruitRange then
+                        sendPickFruit(entityID)
+                    end
+                end
+            end
+        end
+        task.wait(0.1)
+    end
+end
+
+local function plantFruitLoop()
+    while plantFruitEnabled do
+        local currentChar = LocalPlayer.Character
+        local hrp = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+        local deployables = Workspace:FindFirstChild("Deployables")
+        if hrp and deployables then
+            local fruitID = fruits[selectedFruit] or 94
+            for _, model in ipairs(deployables:GetChildren()) do
+                if not plantFruitEnabled then break end
+                if model:IsA("Model") and model.Name == "Plant Box" then
+                    if not model:FindFirstChild("Seed") then
+                        local entityID = model:GetAttribute("EntityID")
+                        if entityID and entityID > 0 then
+                            local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+                            if primary and (primary.Position - hrp.Position).Magnitude <= plantFruitRange then
+                                sendPlantFruit(entityID, fruitID)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.15)
+    end
+end
+
+local pickFruitToggleObj
+pickFruitToggleObj = AutoFarmTab:CreateToggle({
+    Name = "Auto Pick Fruit",
+    CurrentValue = false,
+    Flag = "pickFruitToggle",
+    Callback = function(v)
+        pickFruitEnabled = v
+        if pickFruitTask then task.cancel(pickFruitTask); pickFruitTask = nil end
+        if v then
+            if not getByteNetRemote() then
+                Notify{ Title = "Auto Pick Fruit", Content = "Disabled", Duration = 2 }
+                pickFruitToggleObj:Set(false)
+                return
+            end
+            pickFruitTask = task.spawn(pickFruitLoop)
+            Notify{ Title = "Auto Pick Fruit", Content = "Enabled", Duration = 2 }
+        else
+            Notify{ Title = "Auto Pick Fruit", Content = "Disabled", Duration = 2 }
+        end
+    end
+})
+
+AutoFarmTab:CreateSlider({
+    Name = "Pick Fruit Range",
+    Range = {1, 30},
+    Increment = 1,
+    CurrentValue = 15,
+    Flag = "pickFruitRangeSlider",
+    Callback = function(v) pickFruitRange = v end
+})
+
+AutoFarmTab:CreateDropdown({
+    Name = "Select Fruit to Plant",
+    Options = fruitNames,
+    CurrentValue = "Bloodfruit",
+    MultiSelect = false,
+    Flag = "fruitDropdown",
+    Callback = function(value)
+        if type(value) == "table" then
+            selectedFruit = value[1] or "Bloodfruit"
+        else
+            selectedFruit = value
+        end
+    end
+})
+
+local plantFruitToggleObj
+plantFruitToggleObj = AutoFarmTab:CreateToggle({
+    Name = "Auto Plant Box",
+    CurrentValue = false,
+    Flag = "plantFruitToggle",
+    Callback = function(v)
+        plantFruitEnabled = v
+        if plantFruitTask then task.cancel(plantFruitTask); plantFruitTask = nil end
+        if v then
+            if not getByteNetRemote() then
+                Notify{ Title = "Auto Plant Box", Content = "Disabled", Duration = 2 }
+                plantFruitToggleObj:Set(false)
+                return
+            end
+            plantFruitTask = task.spawn(plantFruitLoop)
+            Notify{ Title = "Auto Plant Box", Content = "Enabled", Duration = 2 }
+        else
+            Notify{ Title = "Auto Plant Box", Content = "Disabled", Duration = 2 }
+        end
+    end
+})
+
+AutoFarmTab:CreateSlider({
+    Name = "Plant Box Range",
+    Range = {1, 30},
+    Increment = 1,
+    CurrentValue = 15,
+    Flag = "plantFruitRangeSlider",
+    Callback = function(v) plantFruitRange = v end
+})
+
+-- ======= SECTION 3: AUTO EAT =======
+AutoFarmTab:CreateSection("Auto Eat")
+
+-- Full food list (including Cooked Meat - ID: 643)
+local foodList = {
+    { id = 4, name = "Coconut" },
+    { id = 32, name = "Oddberry" },
+    { id = 35, name = "Berry" },
+    { id = 53, name = "Bread" },
+    { id = 94, name = "Bloodfruit" },
+    { id = 99, name = "Lemon" },
+    { id = 101, name = "Cloudberry" },
+    { id = 122, name = "Cooked Morsel" },
+    { id = 128, name = "Sunfruit" },
+    { id = 149, name = "Carrot" },
+    { id = 243, name = "Apple" },
+    { id = 247, name = "Barley" },
+    { id = 254, name = "Raw Meat" },
+    { id = 282, name = "Strawberry" },
+    { id = 283, name = "Grain Mush" },
+    { id = 302, name = "Strangefruit" },
+    { id = 351, name = "Corn Mush" },
+    { id = 359, name = "Fried Egg" },
+    { id = 370, name = "Cooked Fish" },
+    { id = 374, name = "Cooked Egg" },
+    { id = 377, name = "Bluefruit" },
+    { id = 378, name = "Prickly Pear" },
+    { id = 379, name = "Corn" },
+    { id = 415, name = "Candycanes" },
+    { id = 523, name = "Raw Morsel" },
+    { id = 563, name = "Raw Fish" },
+    { id = 565, name = "Pie" },
+    { id = 569, name = "Fruit Cake" },
+    { id = 593, name = "Fried Cactus" },
+    { id = 594, name = "Egg" },
+    { id = 599, name = "Cornbread" },
+    { id = 602, name = "Orange" },
+    { id = 604, name = "Jelly" },
+    { id = 606, name = "Banana" },
+    { id = 643, name = "Cooked Meat" }, -- Cooked Meat is right here!
+    { id = 667, name = "Crab Dish" },
+    { id = 668, name = "Raw Crab" },
+    { id = 669, name = "Cooked Crab" },
+    { id = 705, name = "Raw Squid" },
+    { id = 706, name = "Cooked Squid" },
+    { id = 707, name = "Raw Eel" },
+    { id = 708, name = "Cooked Eel" },
+    { id = 709, name = "Raw Baracuda" },
+    { id = 710, name = "Cooked Baracuda" },
+    { id = 734, name = "Cookies" },
+    { id = 834, name = "Carrots" },
+    { id = 847, name = "Jelly Sandwich" },
+    { id = 848, name = "Meat Sandwich" },
+    { id = 850, name = "Watermelon" },
+    { id = 852, name = "Mango" },
+    { id = 942, name = "Frostfruit" },
+    { id = 953, name = "Peppermints" },
+    { id = 1064, name = "Burger" }
+}
+
+-- Build dropdown name list and lookup table
+local foodDropdownNames = {}
+local foodNameToData = {}
+for _, food in ipairs(foodList) do
+    table.insert(foodDropdownNames, food.name)
+    foodNameToData[food.name] = food
+end
+
+local autoEatEnabled = false
+local autoEatTask = nil
+local selectedFood = "Cooked Meat" -- Default selection initialized to Cooked Meat
+local hungerThreshold = 80.0
+
+-- Get the hunger ValueLabel text as a number
+local function getHungerValue()
+    local success, result = pcall(function()
+        local mainGui = LocalPlayer.PlayerGui:FindFirstChild("MainGui")
+        if not mainGui then return nil end
+        local panels = mainGui:FindFirstChild("Panels")
+        if not panels then return nil end
+        local stats = panels:FindFirstChild("Stats")
+        if not stats then return nil end
+        local bars = stats:FindFirstChild("Bars")
+        if not bars then return nil end
+        local hunger = bars:FindFirstChild("Hunger")
+        if not hunger then return nil end
+        local valueLabel = hunger:FindFirstChild("ValueLabel")
+        if not valueLabel then return nil end
+
+        local text = valueLabel.Text
+        -- Remove any non-numeric characters except dot
+        local cleaned = text:match("([%d%.]+)")
+        if cleaned then
+            return tonumber(cleaned)
+        end
+        return nil
+    end)
+
+    if success then return result end
+    return nil
+end
+
+-- Find the LayoutOrder of the selected food in inventory
+local function getFoodLayoutOrder(foodName)
+    local success, result = pcall(function()
+        local mainGui = LocalPlayer.PlayerGui:FindFirstChild("MainGui")
+        if not mainGui then return nil end
+        local rightPanel = mainGui:FindFirstChild("RightPanel")
+        if not rightPanel then return nil end
+        local inventory = rightPanel:FindFirstChild("Inventory")
+        if not inventory then return nil end
+        local list = inventory:FindFirstChild("List")
+        if not list then return nil end
+
+        for _, child in ipairs(list:GetChildren()) do
+            if child:IsA("ImageLabel") and child.Name == foodName then
+                return child.LayoutOrder
+            end
+        end
+        return nil
+    end)
+
+    if success then return result end
+    return nil
+end
+
+-- Create eat buffer using LayoutOrder
+local function createEatBuffer(layoutOrder)
+    local bytes = { 0, 67, layoutOrder, 0 }
+    local b = buffer.create(#bytes)
+    for i = 1, #bytes do
+        buffer.writeu8(b, i - 1, bytes[i])
+    end
+    return b
+end
+
+-- Send eat remote
+local function sendEat(layoutOrder)
+    local event = getByteNetRemote()
+    if not event then return false end
+    local bufferData = createEatBuffer(layoutOrder)
+    pcall(function() event:FireServer(bufferData, nil) end)
+    return true
+end
+
+-- Auto eat loop (1 eat per second)
+local function autoEatLoop()
+    while autoEatEnabled do
+        local hungerVal = getHungerValue()
+
+        if hungerVal and hungerVal <= hungerThreshold then
+            local layoutOrder = getFoodLayoutOrder(selectedFood)
+            if layoutOrder then
+                sendEat(layoutOrder)
+            end
+        end
+
+        task.wait(1)
+    end
+end
+
+-- Food selection dropdown
+AutoFarmTab:CreateDropdown({
+    Name = "Select Food",
+    Options = foodDropdownNames,
+    CurrentValue = "Cooked Meat", -- Force default display value to Cooked Meat
+    MultiSelect = false,
+    Flag = "foodDropdown",
+    Callback = function(value)
+        if type(value) == "table" then
+            selectedFood = value[1] or "Cooked Meat"
+        else
+            selectedFood = value
+        end
+    end
+})
+
+-- Hunger threshold slider
+AutoFarmTab:CreateSlider({
+    Name = "Hunger Threshold",
+    Range = {0, 100},
+    Increment = 1,
+    Suffix = "%",
+    CurrentValue = 80,
+    Flag = "hungerThresholdSlider",
+    Callback = function(v)
+        hungerThreshold = v
+    end
+})
+
+-- Auto eat toggle
+local autoEatToggleObj
+autoEatToggleObj = AutoFarmTab:CreateToggle({
+    Name = "Auto Eat",
+    CurrentValue = false,
+    Flag = "autoEatToggle",
+    Callback = function(v)
+        autoEatEnabled = v
+        if autoEatTask then task.cancel(autoEatTask); autoEatTask = nil end
+
+        if v then
+            if not getByteNetRemote() then
+                Notify{ Title = "Auto Eat", Content = "Disabled", Duration = 2 }
+                autoEatToggleObj:Set(false)
+                return
+            end
+
+            local layoutOrder = getFoodLayoutOrder(selectedFood)
+            if not layoutOrder then
+                Notify{ Title = "Auto Eat", Content = "Disabled", Duration = 2 }
+                autoEatToggleObj:Set(false)
+                return
+            end
+
+            autoEatTask = task.spawn(autoEatLoop)
+            Notify{ Title = "Auto Eat", Content = "Enabled", Duration = 2 }
+        else
+            Notify{ Title = "Auto Eat", Content = "Disabled", Duration = 2 }
+        end
+    end
+})
 
 -- =============================================
--- SERVER HOP
+-- TAB 4: MISC
 -- =============================================
+
 MiscTab:CreateButton({
-    Title = "🚀 Server Hop (ít người nhất)",
+    Name = "Server Hop (Lowest players)",
     Callback = function()
         local placeId = game.PlaceId
         local universeId = game.GameId
         local url = "https://games.roblox.com/v1/games/" .. tostring(universeId) .. "/servers/Public?limit=100"
         local success, response = pcall(function() return game:HttpGet(url) end)
-        if not success then
-            Notify{ Title = "Lỗi", Content = "Không kết nối API.", Duration = 5 }
-            return
-        end
+        if not success then Notify{ Title = "Server Hop", Content = "Failed to connect", Duration = 3 }; return end
         local data
         pcall(function() data = HttpService:JSONDecode(response) end)
-        if not data or not data.data then
-            Notify{ Title = "Lỗi", Content = "Dữ liệu server không hợp lệ.", Duration = 5 }
-            return
-        end
+        if not data or not data.data then Notify{ Title = "Server Hop", Content = "Invalid data", Duration = 3 }; return end
         local best, min = nil, 999
         for _, server in pairs(data.data) do
             if server.id ~= game.JobId then
                 local count = server.playing or 0
-                if count < min then
-                    min = count; best = server
-                end
+                if count < min then min = count; best = server end
             end
         end
         if best then
-            Notify{ Title = "Đang chuyển", Content = "Server có " .. min .. " người.", Duration = 3 }
+            Notify{ Title = "Server Hop", Content = "Teleporting", Duration = 2 }
             TeleportService:TeleportToPlaceInstance(placeId, best.id, LocalPlayer)
         else
-            Notify{ Title = "Thông báo", Content = "Bạn đang ở server ít nhất!", Duration = 5 }
+            Notify{ Title = "Server Hop", Content = "No server found", Duration = 3 }
         end
     end
 })
 
--- =============================================
--- FULLBRIGHT
--- =============================================
-local fullbrightToggle = MiscTab:CreateToggle("fullbrightToggle", { Title = "💡 Fullbright", Default = false })
 local fbCon
-fullbrightToggle:OnChanged(function(v)
-    if fbCon then fbCon:Disconnect() end
-    if v then
-        fbCon = RunService.RenderStepped:Connect(function()
-            Lighting.Brightness = 1
-            Lighting.Ambient = Color3.fromRGB(255,255,255)
-            Lighting.ClockTime = 12
-        end)
-        Notify{ Title = "💡 Fullbright", Content = "Đã bật sáng toàn bộ!", Duration = 2 }
-    else
-        Lighting.Brightness = 0.5
-        Lighting.Ambient = Color3.fromRGB(127,127,127)
-        Notify{ Title = "💡 Fullbright", Content = "Đã tắt.", Duration = 2 }
+MiscTab:CreateToggle({
+    Name = "Fullbright",
+    CurrentValue = false,
+    Flag = "fullbrightToggle",
+    Callback = function(v)
+        fullbrightEnabled = v
+        if fbCon then fbCon:Disconnect() end
+        if v then
+            fbCon = RunService.RenderStepped:Connect(function()
+                Lighting.Brightness = 1
+                Lighting.Ambient = Color3.fromRGB(255,255,255)
+                Lighting.ClockTime = 12
+            end)
+            Notify{ Title = "Fullbright", Content = "Enabled", Duration = 2 }
+        else
+            Lighting.Brightness = 0.5
+            Lighting.Ambient = Color3.fromRGB(127,127,127)
+            Notify{ Title = "Fullbright", Content = "Disabled", Duration = 2 }
+        end
     end
-end)
+})
 
--- =============================================
--- NO FOG
--- =============================================
-local noFogToggle = MiscTab:CreateToggle("noFogToggle", { Title = "🌫️ Xóa sương mù", Default = false })
 local fogCon
-noFogToggle:OnChanged(function(v)
-    if fogCon then fogCon:Disconnect() end
-    if v then
-        fogCon = RunService.RenderStepped:Connect(function()
-            Lighting.FogEnd = 999999
+MiscTab:CreateToggle({
+    Name = "No Fog",
+    CurrentValue = false,
+    Flag = "noFogToggle",
+    Callback = function(v)
+        noFogEnabled = v
+        if fogCon then fogCon:Disconnect() end
+        if v then
+            fogCon = RunService.RenderStepped:Connect(function()
+                Lighting.FogEnd = 999999
+                Lighting.FogStart = 0
+            end)
+            Notify{ Title = "No Fog", Content = "Enabled", Duration = 2 }
+        else
+            Lighting.FogEnd = 1000
             Lighting.FogStart = 0
-        end)
-        Notify{ Title = "🌫️ Xóa sương mù", Content = "Đã xóa fog!", Duration = 2 }
-    else
-        Lighting.FogEnd = 1000
-        Lighting.FogStart = 0
-        Notify{ Title = "🌫️ Xóa sương mù", Content = "Đã tắt.", Duration = 2 }
+            Notify{ Title = "No Fog", Content = "Disabled", Duration = 2 }
+        end
     end
-end)
-
--- =============================================
--- SPEED
--- =============================================
-local speedToggle = MiscTab:CreateToggle("speedToggle", { Title = "🏃 Tùy chỉnh Speed", Default = false })
-local speedSlider = MiscTab:CreateSlider("speedSlider", { Title = "Speed", Min = 16, Max = 19.5, Rounding = 1, Default = 16 })
-local speedSliderNotify = true
+})
 
 local speedCon
 local function applySpeed()
-    if speedToggle.Value then
-        if hum and hum.Parent then hum.WalkSpeed = speedSlider.Value end
+    if speedEnabled then
+        if hum and hum.Parent then hum.WalkSpeed = speedValue end
     else
         if hum then hum.WalkSpeed = 16 end
     end
 end
 
-speedToggle:OnChanged(function(v)
-    if speedCon then speedCon:Disconnect() end
-    if v then
-        speedCon = RunService.RenderStepped:Connect(applySpeed)
-        applySpeed()
-        Notify{ Title = "🏃 Speed", Content = "Tốc độ: " .. speedSlider.Value, Duration = 2 }
-    else
-        if hum then hum.WalkSpeed = 16 end
-        Notify{ Title = "🏃 Speed", Content = "Đã tắt.", Duration = 2 }
-    end
-end)
-speedSlider:OnChanged(function(v)
-    if speedToggle.Value then
-        if speedSliderNotify then
-            Notify{ Title = "🏃 Speed", Content = "Tốc độ: " .. v, Duration = 2 }
+MiscTab:CreateToggle({
+    Name = "Custom Walk Speed",
+    CurrentValue = false,
+    Flag = "speedToggle",
+    Callback = function(v)
+        speedEnabled = v
+        if speedCon then speedCon:Disconnect() end
+        if v then
+            speedCon = RunService.RenderStepped:Connect(applySpeed)
+            applySpeed()
+            Notify{ Title = "Walk Speed", Content = "Enabled", Duration = 2 }
+        else
+            if hum then hum.WalkSpeed = 16 end
+            Notify{ Title = "Walk Speed", Content = "Disabled", Duration = 2 }
         end
-        applySpeed()
     end
-end)
+})
 
--- =============================================
--- CLIMB MOUNTAIN
--- =============================================
-local climbToggle = MiscTab:CreateToggle("climbToggle", { Title = "⛰️ Leo dốc", Default = false })
+MiscTab:CreateSlider({
+    Name = "Speed Value",
+    Range = {16, 20},
+    Increment = 0.1,
+    CurrentValue = 16,
+    Flag = "speedSlider",
+    Callback = function(v)
+        speedValue = v
+        if speedEnabled then applySpeed() end
+    end
+})
+
 local climbCon
-climbToggle:OnChanged(function(v)
-    if climbCon then climbCon:Disconnect() end
-    if v then
-        climbCon = RunService.RenderStepped:Connect(function()
-            if hum then hum.MaxSlopeAngle = 90 end
-        end)
-        Notify{ Title = "⛰️ Leo dốc", Content = "Đã bật!", Duration = 2 }
-    else
-        if hum then hum.MaxSlopeAngle = 46 end
-        Notify{ Title = "⛰️ Leo dốc", Content = "Đã tắt.", Duration = 2 }
+MiscTab:CreateToggle({
+    Name = "Climb Steep Slopes",
+    CurrentValue = false,
+    Flag = "climbToggle",
+    Callback = function(v)
+        climbEnabled = v
+        if climbCon then climbCon:Disconnect() end
+        if v then
+            climbCon = RunService.RenderStepped:Connect(function()
+                if hum then hum.MaxSlopeAngle = 90 end
+            end)
+            Notify{ Title = "Climb Slopes", Content = "Enabled", Duration = 2 }
+        else
+            if hum then hum.MaxSlopeAngle = 46 end
+            Notify{ Title = "Climb Slopes", Content = "Disabled", Duration = 2 }
+        end
     end
-end)
-
--- =============================================
--- GRAVITY
--- =============================================
-local gravityToggle = MiscTab:CreateToggle("gravityToggle", { Title = "🌎 Tùy chỉnh Gravity", Default = false })
-local gravitySlider = MiscTab:CreateSlider("gravitySlider", { Title = "Gravity", Min = 90, Max = 196.2, Rounding = 1, Default = 196.2 })
-local gravitySliderNotify = true
+})
 
 local gravityCon
-gravityToggle:OnChanged(function(v)
-    if gravityCon then gravityCon:Disconnect() end
-    if v then
-        gravityCon = RunService.RenderStepped:Connect(function()
-            Workspace.Gravity = gravitySlider.Value
-        end)
-        Notify{ Title = "🌎 Gravity", Content = "Đã bật! Giá trị: " .. gravitySlider.Value, Duration = 2 }
-    else
-        Workspace.Gravity = 196.2
-        Notify{ Title = "🌎 Gravity", Content = "Đã tắt.", Duration = 2 }
-    end
-end)
-gravitySlider:OnChanged(function(v)
-    if gravityToggle.Value then
-        if gravitySliderNotify then
-            Notify{ Title = "🌎 Gravity", Content = "Giá trị: " .. v, Duration = 2 }
-        end
-        Workspace.Gravity = v
-    end
-end)
-
--- =============================================
--- ZOOM VÔ CỰC
--- =============================================
-local zoomToggle = MiscTab:CreateToggle("zoomToggle", { Title = "🔭 Zoom vô cực", Default = false })
-local zoomCon
-zoomToggle:OnChanged(function(v)
-    if zoomCon then zoomCon:Disconnect() end
-    if v then
-        zoomCon = RunService.RenderStepped:Connect(function()
-            pcall(function()
-                Camera.MaxZoomDistance = 999999999
-                Camera.MinZoomDistance = 0.5
+MiscTab:CreateToggle({
+    Name = "Custom Gravity",
+    CurrentValue = false,
+    Flag = "gravityToggle",
+    Callback = function(v)
+        gravityEnabled = v
+        if gravityCon then gravityCon:Disconnect() end
+        if v then
+            gravityCon = RunService.RenderStepped:Connect(function()
+                Workspace.Gravity = gravityValue
             end)
-        end)
-        Notify{ Title = "🔭 Zoom", Content = "Đã bật zoom vô cực!", Duration = 2 }
-    else
-        pcall(function()
-            Camera.MaxZoomDistance = 400
-            Camera.MinZoomDistance = 1
-        end)
-        Notify{ Title = "🔭 Zoom", Content = "Đã tắt.", Duration = 2 }
+            Notify{ Title = "Gravity", Content = "Enabled", Duration = 2 }
+        else
+            Workspace.Gravity = 196.2
+            Notify{ Title = "Gravity", Content = "Disabled", Duration = 2 }
+        end
     end
-end)
+})
+
+MiscTab:CreateSlider({
+    Name = "Gravity Value",
+    Range = {90, 196},
+    Increment = 1,
+    CurrentValue = 196,
+    Flag = "gravitySlider",
+    Callback = function(v)
+        gravityValue = v
+        if gravityEnabled then Workspace.Gravity = v end
+    end
+})
+
+local zoomCon
+MiscTab:CreateToggle({
+    Name = "Infinite Zoom",
+    CurrentValue = false,
+    Flag = "zoomToggle",
+    Callback = function(v)
+        zoomEnabled = v
+        if zoomCon then zoomCon:Disconnect() end
+        if v then
+            zoomCon = RunService.RenderStepped:Connect(function()
+                pcall(function()
+                    Camera.MaxZoomDistance = 999999999
+                    Camera.MinZoomDistance = 0.5
+                end)
+            end)
+            Notify{ Title = "Infinite Zoom", Content = "Enabled", Duration = 2 }
+        else
+            pcall(function()
+                Camera.MaxZoomDistance = 400
+                Camera.MinZoomDistance = 1
+            end)
+            Notify{ Title = "Infinite Zoom", Content = "Disabled", Duration = 2 }
+        end
+    end
+})
 
 -- =============================================
--- TAB 4: SETTINGS
+-- TAB 5: SETTINGS
 -- =============================================
-local SettingsTab = Window:AddTab({ Title = "Settings", Icon = "settings" })
 
--- =============================================
--- TOGGLE TẮT THÔNG BÁO (Notify)
--- =============================================
 SettingsTab:CreateToggle({
-    Title = "🔕 Tắt thông báo (Notify)",
-    Default = false,
+    Name = "Mute Notifications",
+    CurrentValue = false,
+    Flag = "muteNotifications",
     Callback = function(v)
         notifyEnabled = not v
         if v then
-            Library:Notify{ Title = "🔕 Thông báo", Content = "Đã tắt thông báo.", Duration = 2 }
+            Rayfield:Notify{ Title = "Notifications", Content = "Muted", Duration = 2 }
         else
-            Library:Notify{ Title = "🔔 Thông báo", Content = "Đã bật thông báo.", Duration = 2 }
+            Rayfield:Notify{ Title = "Notifications", Content = "Enabled", Duration = 2 }
         end
     end
 })
 
--- =============================================
--- RESET + DESTROY
--- =============================================
-SettingsTab:AddButton({
-    Title = "🔄 Reset tất cả cấu hình",
+SettingsTab:CreateButton({
+    Name = "Reset All Config",
     Callback = function()
-        SaveManager:ResetAll()
-        Notify{
-            Title = "Đã reset",
-            Content = "Tất cả cấu hình đã được xóa!",
-            Duration = 3
-        }
+        Notify{ Title = "Config", Content = "Reset complete", Duration = 3 }
     end
 })
 
-SettingsTab:AddButton({
-    Title = "🗑️ Destroy GUI + Cleanup",
+SettingsTab:CreateButton({
+    Name = "Destroy GUI and Cleanup",
     Callback = function()
-        -- Dừng tất cả các vòng lặp
         if hitboxLoop then hitboxLoop:Disconnect() end
         if warningLoop then warningLoop:Disconnect() end
         if fbCon then fbCon:Disconnect() end
@@ -1108,23 +1691,52 @@ SettingsTab:AddButton({
         if playerRenderConn then playerRenderConn:Disconnect() end
         if godRenderConn then godRenderConn:Disconnect() end
         if oreRenderConn then oreRenderConn:Disconnect() end
-        
+
         if healTask then task.cancel(healTask) end
         if healV2Task then task.cancel(healV2Task) end
-        
+        if chunkMonitorTask then task.cancel(chunkMonitorTask) end
+        if clickTask then task.cancel(clickTask) end
+        if pickupTask then task.cancel(pickupTask) end
+        if pickFruitTask then task.cancel(pickFruitTask) end
+        if plantFruitTask then task.cancel(plantFruitTask) end
+        if autoEatTask then task.cancel(autoEatTask) end
+
         if warningSound then warningSound:Stop() end
-        
-        -- Xóa tất cả billboard
+        if currentTween then currentTween:Cancel() end
+        destroyZone()
+
+        warningEnabled = false
+        hitboxActive = false
+        autoHealEnabled = false
+        autoHealV2Enabled = false
+        healRunning = false
+        healV2Running = false
+        espEnabled = false
+        espTeamColorEnabled = false
+        espOreEnabled = false
+        espGodEnabled = false
+        fullbrightEnabled = false
+        noFogEnabled = false
+        speedEnabled = false
+        climbEnabled = false
+        gravityEnabled = false
+        zoomEnabled = false
+        autoChunkEnabled = false
+        autoClickEnabled = false
+        autoPickupEnabled = false
+        pickFruitEnabled = false
+        plantFruitEnabled = false
+        autoEatEnabled = false
+
         clearAllPlayerBillboards()
         clearAllGodBillboards()
         clearAllOreBillboards()
-        
-        -- Reset hitbox
+
         for _, player in pairs(Players:GetPlayers()) do
             if player ~= LocalPlayer then
-                local char = player.Character
-                if char then
-                    local rootPart = char:FindFirstChild("HumanoidRootPart")
+                local pchar = player.Character
+                if pchar then
+                    local rootPart = pchar:FindFirstChild("HumanoidRootPart")
                     if rootPart then
                         rootPart.Size = Vector3.new(2, 1, 1)
                         rootPart.Transparency = 0
@@ -1133,58 +1745,40 @@ SettingsTab:AddButton({
                 end
             end
         end
-        
-        -- Reset speed và gravity
-        if hum then hum.WalkSpeed = 16 end
+
+        if hum then
+            hum.WalkSpeed = 16
+            hum.MaxSlopeAngle = 46
+        end
         Workspace.Gravity = 196.2
-        
-        Notify{ Title = "GUI", Content = "Đã dọn dẹp và hủy giao diện!", Duration = 3 }
+        Lighting.Brightness = 0.5
+        Lighting.Ambient = Color3.fromRGB(127,127,127)
+        Lighting.FogEnd = 1000
+        Lighting.FogStart = 0
+        pcall(function()
+            Camera.MaxZoomDistance = 400
+            Camera.MinZoomDistance = 1
+        end)
+
+        Notify{ Title = "Cleanup", Content = "Complete", Duration = 2 }
         task.wait(1)
-        
-        Window:Destroy()
-        print("Booga Tools Pro đã được dọn dẹp hoàn toàn.")
+        Rayfield:Destroy()
     end
 })
 
 -- =============================================
--- LƯU CẤU HÌNH + KHỞI ĐỘNG
+-- CHARACTER RESET HANDLER
 -- =============================================
-SaveManager:SetLibrary(Library)
-InterfaceManager:SetLibrary(Library)
-
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes{}
-
-InterfaceManager:SetFolder("BoogaToolsPro")
-SaveManager:SetFolder("BoogaToolsPro")
-
-InterfaceManager:BuildInterfaceSection(SettingsTab)
-SaveManager:BuildConfigSection(SettingsTab)
-
--- RESET NHÂN VẬT
 local function onCharacterAdded(newChar)
     char = newChar
     hum = char:WaitForChild("Humanoid")
-    
-    if speedToggle.Value then
-        hum.WalkSpeed = speedSlider.Value
-    end
-    if climbToggle.Value then
-        hum.MaxSlopeAngle = 90
-    end
+    if speedEnabled then hum.WalkSpeed = speedValue end
+    if climbEnabled then hum.MaxSlopeAngle = 90 end
 end
 LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
 
--- Chạy auto resize lần đầu
-task.wait(0.5)
-autoResizeGUI()
-
-Window:SelectTab(1)
-
 Notify{
     Title = "Booga Tools Pro",
-    Content = "Đã tải! 4 tabs, ESP trong suốt.",
-    Duration = 5
+    Content = "Loaded successfully",
+    Duration = 4
 }
-
-SaveManager:LoadAutoloadConfig()
