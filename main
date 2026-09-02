@@ -1,5 +1,5 @@
 -- =============================================
--- BOOGA TOOLS PRO – RAYFIELD VERSION (FULL + AUTO FARM + AUTO EAT)
+-- BOOGA TOOLS PRO – RAYFIELD VERSION (FULL + HOTKEY + CONFIG SAVE + CLICK SPEED)
 -- =============================================
 
 -- LOAD RAYFIELD UI
@@ -811,6 +811,7 @@ local autoClickEnabled = false
 local autoPickupEnabled = false
 local chunkDistance = 5
 local clickPositionMode = "Center"
+local autoClickInterval = 0.1 -- Default click interval (speed)
 local zonePart = nil
 local processing = false
 local originalCFrame = nil
@@ -819,6 +820,58 @@ local isTweening = false
 local chunkMonitorTask = nil
 local clickTask = nil
 local pickupTask = nil
+
+-- Click indicator dot
+local clickDot = nil
+
+local function updateClickDotPosition()
+    if not clickDot then return end
+    local vp = Workspace.CurrentCamera.ViewportSize
+    local centerX = vp.X / 2
+    local centerY = vp.Y / 2
+    if clickPositionMode == "Top Center" then
+        centerY = 50
+    end
+    clickDot.Dot.Position = UDim2.new(0, centerX - 5, 0, centerY - 5)
+end
+
+local function createClickDot()
+    if clickDot then return end
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "ClickDotGui"
+    screenGui.ResetOnSpawn = false
+    screenGui.IgnoreGuiInset = true
+    screenGui.DisplayOrder = 999999
+    screenGui.Parent = LocalPlayer.PlayerGui
+
+    local dot = Instance.new("Frame")
+    dot.Name = "ClickDot"
+    dot.Size = UDim2.new(0, 10, 0, 10)
+    dot.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    dot.BackgroundTransparency = 0.3
+    dot.BorderSizePixel = 0
+    dot.Parent = screenGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = dot
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 1
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Transparency = 0.5
+    stroke.Parent = dot
+
+    clickDot = {Gui = screenGui, Dot = dot}
+    updateClickDotPosition()
+end
+
+local function removeClickDot()
+    if clickDot then
+        if clickDot.Gui then clickDot.Gui:Destroy() end
+        clickDot = nil
+    end
+end
 
 local function createZone()
     if zonePart then return end
@@ -925,9 +978,19 @@ local function doAutoClick()
     if clickPositionMode == "Top Center" then
         centerY = inset.Y + 50
     end
+
+    -- Hide dot briefly so click passes through
+    if clickDot and clickDot.Dot then
+        clickDot.Dot.Visible = false
+    end
+
     VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 0)
     task.wait(0.01)
     VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 0)
+
+    if clickDot and clickDot.Dot then
+        clickDot.Dot.Visible = true
+    end
 end
 
 local function createPickupBuffer(entityID)
@@ -1011,7 +1074,8 @@ AutoFarmTab:CreateSlider({
     Callback = function(v) chunkDistance = v end
 })
 
-AutoFarmTab:CreateToggle({
+local autoClickToggleObj
+autoClickToggleObj = AutoFarmTab:CreateToggle({
     Name = "Auto Click",
     CurrentValue = false,
     Flag = "autoClickToggle",
@@ -1019,14 +1083,32 @@ AutoFarmTab:CreateToggle({
         autoClickEnabled = v
         if v then
             if clickTask then task.cancel(clickTask) end
+            createClickDot()
             clickTask = task.spawn(function()
-                while autoClickEnabled do doAutoClick(); task.wait(0.1) end
+                while autoClickEnabled do
+                    doAutoClick()
+                    task.wait(autoClickInterval) -- Speed interval adjusted dynamically
+                end
             end)
             Notify{ Title = "Auto Click", Content = "Enabled", Duration = 2 }
         else
             if clickTask then task.cancel(clickTask); clickTask = nil end
+            removeClickDot()
             Notify{ Title = "Auto Click", Content = "Disabled", Duration = 2 }
         end
+    end
+})
+
+-- Adjustable interval (speed) for auto clicking
+AutoFarmTab:CreateSlider({
+    Name = "Click Interval (Speed)",
+    Range = {0.01, 1},
+    Increment = 0.01,
+    Suffix = "s",
+    CurrentValue = 0.1,
+    Flag = "clickSpeedSlider",
+    Callback = function(v)
+        autoClickInterval = v
     end
 })
 
@@ -1042,8 +1124,49 @@ AutoFarmTab:CreateDropdown({
         else
             clickPositionMode = value
         end
+        updateClickDotPosition()
     end
 })
+
+-- Hotkey system
+local autoClickHotkey = Enum.KeyCode.J
+local listeningForHotkey = false
+
+local hotkeyButtonObj
+hotkeyButtonObj = AutoFarmTab:CreateButton({
+    Name = "Auto Click Hotkey: J (Click to change)",
+    Callback = function()
+        listeningForHotkey = true
+        Notify{ Title = "Hotkey", Content = "Press any key to set hotkey", Duration = 3 }
+    end
+})
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
+    if listeningForHotkey then
+        if input.KeyCode ~= Enum.KeyCode.Unknown then
+            autoClickHotkey = input.KeyCode
+            listeningForHotkey = false
+            pcall(function()
+                hotkeyButtonObj:Set("Auto Click Hotkey: " .. autoClickHotkey.Name .. " (Click to change)")
+            end)
+            Notify{ Title = "Hotkey", Content = "Set to " .. autoClickHotkey.Name, Duration = 2 }
+        end
+        return
+    end
+
+    if input.KeyCode == autoClickHotkey then
+        local newState = not autoClickEnabled
+        pcall(function()
+            autoClickToggleObj:Set(newState)
+        end)
+    end
+end)
+
+Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+    updateClickDotPosition()
+end)
 
 AutoFarmTab:CreateToggle({
     Name = "Auto Pickup Items",
@@ -1081,6 +1204,13 @@ local plantFruitRange = 15
 local selectedFruit = "Bloodfruit"
 local pickFruitTask = nil
 local plantFruitTask = nil
+
+local fruitTweenEnabled = false
+local fruitTweenTask = nil
+local fruitTweenObj = nil
+local fruitHomePosition = nil
+local fruitScanRadius = 200
+local fruitStandDistance = 3
 
 local function createPickFruitBuffer(entityID)
     local b = buffer.create(6)
@@ -1160,6 +1290,200 @@ local function plantFruitLoop()
     end
 end
 
+-- Fruit tween system
+local function fruitTweenTo(targetCFrame)
+    local character = LocalPlayer.Character
+    if not character then return false end
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return false end
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then return false end
+
+    local dist = (rootPart.Position - targetCFrame.Position).Magnitude
+    if dist < 0.5 then return true end
+
+    local tweenInfo = TweenInfo.new(dist / 16, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+    local tween = TweenService:Create(rootPart, tweenInfo, {CFrame = targetCFrame})
+    fruitTweenObj = tween
+
+    tween:Play()
+    tween.Completed:Wait()
+
+    fruitTweenObj = nil
+    return true
+end
+
+local function fruitTweenToPart(modelPart, standDist)
+    local character = LocalPlayer.Character
+    if not character then return false end
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return false end
+
+    local modelPos = modelPart.Position
+    local currentPos = rootPart.Position
+    local dir = (currentPos - modelPos).Magnitude > 0 and (currentPos - modelPos).Unit or Vector3.new(0, 0, 1)
+    local targetPos = modelPos + dir * standDist
+    local targetCFrame = CFrame.new(targetPos, modelPos)
+
+    return fruitTweenTo(targetCFrame)
+end
+
+local function findEmptyBoxes(hrpPos)
+    local results = {}
+    local deployables = Workspace:FindFirstChild("Deployables")
+    if not deployables then return results end
+
+    for _, model in ipairs(deployables:GetChildren()) do
+        if model:IsA("Model") and model.Name == "Plant Box" then
+            if not model:FindFirstChild("Seed") then
+                local entityID = model:GetAttribute("EntityID")
+                if entityID and entityID > 0 then
+                    local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+                    if primary then
+                        local dist = (primary.Position - hrpPos).Magnitude
+                        if dist <= fruitScanRadius then
+                            table.insert(results, {
+                                Type = "box",
+                                Ref = model,
+                                Part = primary,
+                                Distance = dist
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return results
+end
+
+local function findCrops(hrpPos)
+    local results = {}
+    local cropsFolder = Workspace:FindFirstChild("Crops")
+    if not cropsFolder then return results end
+
+    for _, item in ipairs(cropsFolder:GetChildren()) do
+        local entityID = item:GetAttribute("EntityID")
+        if entityID then
+            local primary
+            if item:IsA("BasePart") then
+                primary = item
+            elseif item:IsA("Model") then
+                primary = item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart")
+            end
+            if primary then
+                local dist = (primary.Position - hrpPos).Magnitude
+                if dist <= fruitScanRadius then
+                    table.insert(results, {
+                        Type = "crop",
+                        Ref = item,
+                        Part = primary,
+                        Distance = dist
+                    })
+                end
+            end
+        end
+    end
+
+    return results
+end
+
+local function buildTargetQueue()
+    local character = LocalPlayer.Character
+    local hrp = character and character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return {} end
+
+    local playerPos = hrp.Position
+    local queue = {}
+
+    local boxes = findEmptyBoxes(playerPos)
+    for _, box in ipairs(boxes) do
+        table.insert(queue, box)
+    end
+
+    local crops = findCrops(playerPos)
+    for _, crop in ipairs(crops) do
+        table.insert(queue, crop)
+    end
+
+    table.sort(queue, function(a, b)
+        return a.Distance < b.Distance
+    end)
+
+    return queue
+end
+
+local function isTargetValid(target)
+    if not target.Ref or not target.Ref.Parent then return false end
+    if not target.Part or not target.Part.Parent then return false end
+
+    if target.Type == "box" then
+        if target.Ref:FindFirstChild("Seed") then return false end
+    end
+
+    return true
+end
+
+local function fruitTweenLoop()
+    local character = LocalPlayer.Character
+    local hrp = character and character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    fruitHomePosition = hrp.CFrame
+
+    while fruitTweenEnabled do
+        if not LocalPlayer.Character then task.wait(0.5); continue end
+        hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not hrp then task.wait(0.5); continue end
+
+        local queue = buildTargetQueue()
+
+        if #queue == 0 then
+            task.wait(1)
+            continue
+        end
+
+        for _, target in ipairs(queue) do
+            if not fruitTweenEnabled then break end
+
+            if isTargetValid(target) then
+                fruitTweenToPart(target.Part, fruitStandDistance)
+
+                if not fruitTweenEnabled then break end
+
+                local waitStart = tick()
+                while fruitTweenEnabled and tick() - waitStart < 0.5 do
+                    if not isTargetValid(target) then break end
+                    task.wait(0.05)
+                end
+            end
+
+            if not fruitTweenEnabled then break end
+        end
+
+        if not fruitTweenEnabled then break end
+
+        local newQueue = buildTargetQueue()
+        if #newQueue == 0 then
+            if fruitHomePosition and fruitTweenEnabled then
+                fruitTweenTo(fruitHomePosition)
+            end
+            task.wait(2)
+        else
+            task.wait(0.3)
+        end
+    end
+
+    if fruitHomePosition and LocalPlayer.Character then
+        local hrpCheck = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if hrpCheck then
+            fruitTweenTo(fruitHomePosition)
+        end
+    end
+
+    fruitHomePosition = nil
+end
+
 local pickFruitToggleObj
 pickFruitToggleObj = AutoFarmTab:CreateToggle({
     Name = "Auto Pick Fruit",
@@ -1237,10 +1561,39 @@ AutoFarmTab:CreateSlider({
     Callback = function(v) plantFruitRange = v end
 })
 
+local fruitTweenToggleObj
+fruitTweenToggleObj = AutoFarmTab:CreateToggle({
+    Name = "Tween to Box and Crop (200 studs)",
+    CurrentValue = false,
+    Flag = "fruitTweenToggle",
+    Callback = function(v)
+        fruitTweenEnabled = v
+
+        if fruitTweenTask then
+            task.cancel(fruitTweenTask)
+            fruitTweenTask = nil
+        end
+
+        if v then
+            if fruitTweenObj then
+                fruitTweenObj:Cancel()
+                fruitTweenObj = nil
+            end
+            fruitTweenTask = task.spawn(fruitTweenLoop)
+            Notify{ Title = "Tween Fruit Farm", Content = "Enabled", Duration = 2 }
+        else
+            if fruitTweenObj then
+                fruitTweenObj:Cancel()
+                fruitTweenObj = nil
+            end
+            Notify{ Title = "Tween Fruit Farm", Content = "Disabled", Duration = 2 }
+        end
+    end
+})
+
 -- ======= SECTION 3: AUTO EAT =======
 AutoFarmTab:CreateSection("Auto Eat")
 
--- Full food list (including Cooked Meat - ID: 643)
 local foodList = {
     { id = 4, name = "Coconut" },
     { id = 32, name = "Oddberry" },
@@ -1276,7 +1629,7 @@ local foodList = {
     { id = 602, name = "Orange" },
     { id = 604, name = "Jelly" },
     { id = 606, name = "Banana" },
-    { id = 643, name = "Cooked Meat" }, -- Cooked Meat is right here!
+    { id = 643, name = "Cooked Meat" },
     { id = 667, name = "Crab Dish" },
     { id = 668, name = "Raw Crab" },
     { id = 669, name = "Cooked Crab" },
@@ -1297,7 +1650,6 @@ local foodList = {
     { id = 1064, name = "Burger" }
 }
 
--- Build dropdown name list and lookup table
 local foodDropdownNames = {}
 local foodNameToData = {}
 for _, food in ipairs(foodList) do
@@ -1307,10 +1659,9 @@ end
 
 local autoEatEnabled = false
 local autoEatTask = nil
-local selectedFood = "Cooked Meat" -- Default selection initialized to Cooked Meat
-local hungerThreshold = 80.0
+local selectedFood = "Cooked Meat"
+local hungerThreshold = 80
 
--- Get the hunger ValueLabel text as a number
 local function getHungerValue()
     local success, result = pcall(function()
         local mainGui = LocalPlayer.PlayerGui:FindFirstChild("MainGui")
@@ -1327,7 +1678,6 @@ local function getHungerValue()
         if not valueLabel then return nil end
 
         local text = valueLabel.Text
-        -- Remove any non-numeric characters except dot
         local cleaned = text:match("([%d%.]+)")
         if cleaned then
             return tonumber(cleaned)
@@ -1339,7 +1689,6 @@ local function getHungerValue()
     return nil
 end
 
--- Find the LayoutOrder of the selected food in inventory
 local function getFoodLayoutOrder(foodName)
     local success, result = pcall(function()
         local mainGui = LocalPlayer.PlayerGui:FindFirstChild("MainGui")
@@ -1363,7 +1712,6 @@ local function getFoodLayoutOrder(foodName)
     return nil
 end
 
--- Create eat buffer using LayoutOrder
 local function createEatBuffer(layoutOrder)
     local bytes = { 0, 67, layoutOrder, 0 }
     local b = buffer.create(#bytes)
@@ -1373,7 +1721,6 @@ local function createEatBuffer(layoutOrder)
     return b
 end
 
--- Send eat remote
 local function sendEat(layoutOrder)
     local event = getByteNetRemote()
     if not event then return false end
@@ -1382,7 +1729,6 @@ local function sendEat(layoutOrder)
     return true
 end
 
--- Auto eat loop (1 eat per second)
 local function autoEatLoop()
     while autoEatEnabled do
         local hungerVal = getHungerValue()
@@ -1398,11 +1744,10 @@ local function autoEatLoop()
     end
 end
 
--- Food selection dropdown
 AutoFarmTab:CreateDropdown({
     Name = "Select Food",
     Options = foodDropdownNames,
-    CurrentValue = "Cooked Meat", -- Force default display value to Cooked Meat
+    CurrentValue = "Cooked Meat",
     MultiSelect = false,
     Flag = "foodDropdown",
     Callback = function(value)
@@ -1414,7 +1759,6 @@ AutoFarmTab:CreateDropdown({
     end
 })
 
--- Hunger threshold slider
 AutoFarmTab:CreateSlider({
     Name = "Hunger Threshold",
     Range = {0, 100},
@@ -1427,7 +1771,6 @@ AutoFarmTab:CreateSlider({
     end
 })
 
--- Auto eat toggle
 local autoEatToggleObj
 autoEatToggleObj = AutoFarmTab:CreateToggle({
     Name = "Auto Eat",
@@ -1656,6 +1999,8 @@ MiscTab:CreateToggle({
 -- TAB 5: SETTINGS
 -- =============================================
 
+SettingsTab:CreateSection("Notifications")
+
 SettingsTab:CreateToggle({
     Name = "Mute Notifications",
     CurrentValue = false,
@@ -1670,16 +2015,151 @@ SettingsTab:CreateToggle({
     end
 })
 
+SettingsTab:CreateSection("Configuration")
+
+local function buildConfigTable()
+    return {
+        warningToggle = warningEnabled,
+        hitboxToggle = hitboxActive,
+        autoHealToggle = autoHealEnabled,
+        autoHealV2Toggle = autoHealV2Enabled,
+        espToggle = espEnabled,
+        espTeamColor = espTeamColorEnabled,
+        espGodToggle = espGodEnabled,
+        espOreToggle = espOreEnabled,
+        selectedOres = selectedOres,
+        autoChunkToggle = autoChunkEnabled,
+        chunkDistance = chunkDistance,
+        autoClickToggle = autoClickEnabled,
+        clickPosition = clickPositionMode,
+        autoClickInterval = autoClickInterval,
+        autoClickHotkey = autoClickHotkey.Name,
+        autoPickupToggle = autoPickupEnabled,
+        pickFruitToggle = pickFruitEnabled,
+        pickFruitRange = pickFruitRange,
+        selectedFruit = selectedFruit,
+        plantFruitToggle = plantFruitEnabled,
+        plantFruitRange = plantFruitRange,
+        fruitTweenToggle = fruitTweenEnabled,
+        autoEatToggle = autoEatEnabled,
+        selectedFood = selectedFood,
+        hungerThreshold = hungerThreshold,
+        fullbrightToggle = fullbrightEnabled,
+        noFogToggle = noFogEnabled,
+        speedToggle = speedEnabled,
+        speedValue = speedValue,
+        climbToggle = climbEnabled,
+        gravityToggle = gravityEnabled,
+        gravityValue = gravityValue,
+        zoomToggle = zoomEnabled,
+        muteNotifications = not notifyEnabled
+    }
+end
+
+local function applyConfigValues(config)
+    if config.speedValue then speedValue = config.speedValue end
+    if config.gravityValue then gravityValue = config.gravityValue end
+    if config.chunkDistance then chunkDistance = config.chunkDistance end
+    if config.pickFruitRange then pickFruitRange = config.pickFruitRange end
+    if config.plantFruitRange then plantFruitRange = config.plantFruitRange end
+    if config.hungerThreshold then hungerThreshold = config.hungerThreshold end
+    if config.selectedFruit then selectedFruit = config.selectedFruit end
+    if config.selectedFood then selectedFood = config.selectedFood end
+    if config.clickPosition then clickPositionMode = config.clickPosition end
+    if config.selectedOres then selectedOres = config.selectedOres end
+    if config.autoClickInterval then autoClickInterval = config.autoClickInterval end
+
+    if config.autoClickHotkey then
+        local keyOk, keyVal = pcall(function()
+            return Enum.KeyCode[config.autoClickHotkey]
+        end)
+        if keyOk and keyVal then
+            autoClickHotkey = keyVal
+            pcall(function()
+                hotkeyButtonObj:Set("Auto Click Hotkey: " .. autoClickHotkey.Name .. " (Click to change)")
+            end)
+        end
+    end
+
+    if config.muteNotifications ~= nil then
+        notifyEnabled = not config.muteNotifications
+    end
+end
+
 SettingsTab:CreateButton({
-    Name = "Reset All Config",
+    Name = "Save Current Config",
     Callback = function()
-        Notify{ Title = "Config", Content = "Reset complete", Duration = 3 }
+        local success, encoded = pcall(function()
+            return HttpService:JSONEncode(buildConfigTable())
+        end)
+
+        if success then
+            if writefile then
+                pcall(function()
+                    writefile("BoogaToolsPro_SavedConfig.json", encoded)
+                end)
+                Notify{ Title = "Config", Content = "Saved successfully", Duration = 2 }
+            else
+                Notify{ Title = "Config", Content = "File system not supported", Duration = 3 }
+            end
+        else
+            Notify{ Title = "Config", Content = "Failed to save", Duration = 3 }
+        end
     end
 })
 
 SettingsTab:CreateButton({
+    Name = "Load Saved Config",
+    Callback = function()
+        if not readfile or not isfile then
+            Notify{ Title = "Config", Content = "File system not supported", Duration = 3 }
+            return
+        end
+
+        if not isfile("BoogaToolsPro_SavedConfig.json") then
+            Notify{ Title = "Config", Content = "No saved config found", Duration = 3 }
+            return
+        end
+
+        local success, config = pcall(function()
+            local raw = readfile("BoogaToolsPro_SavedConfig.json")
+            return HttpService:JSONDecode(raw)
+        end)
+
+        if not success or not config then
+            Notify{ Title = "Config", Content = "Failed to load", Duration = 3 }
+            return
+        end
+
+        applyConfigValues(config)
+        Notify{ Title = "Config", Content = "Loaded successfully", Duration = 2 }
+    end
+})
+
+SettingsTab:CreateButton({
+    Name = "Delete Saved Config",
+    Callback = function()
+        if delfile and isfile and isfile("BoogaToolsPro_SavedConfig.json") then
+            pcall(function() delfile("BoogaToolsPro_SavedConfig.json") end)
+            Notify{ Title = "Config", Content = "Deleted", Duration = 2 }
+        else
+            Notify{ Title = "Config", Content = "No config to delete", Duration = 2 }
+        end
+    end
+})
+
+SettingsTab:CreateSection("Cleanup")
+
+SettingsTab:CreateButton({
     Name = "Destroy GUI and Cleanup",
     Callback = function()
+        -- Auto save before destroy
+        pcall(function()
+            if writefile then
+                writefile("BoogaToolsPro_SavedConfig.json", HttpService:JSONEncode(buildConfigTable()))
+            end
+        end)
+
         if hitboxLoop then hitboxLoop:Disconnect() end
         if warningLoop then warningLoop:Disconnect() end
         if fbCon then fbCon:Disconnect() end
@@ -1700,10 +2180,13 @@ SettingsTab:CreateButton({
         if pickFruitTask then task.cancel(pickFruitTask) end
         if plantFruitTask then task.cancel(plantFruitTask) end
         if autoEatTask then task.cancel(autoEatTask) end
+        if fruitTweenTask then task.cancel(fruitTweenTask) end
+        if fruitTweenObj then fruitTweenObj:Cancel() end
 
         if warningSound then warningSound:Stop() end
         if currentTween then currentTween:Cancel() end
         destroyZone()
+        removeClickDot()
 
         warningEnabled = false
         hitboxActive = false
@@ -1727,6 +2210,8 @@ SettingsTab:CreateButton({
         pickFruitEnabled = false
         plantFruitEnabled = false
         autoEatEnabled = false
+        fruitTweenEnabled = false
+        fruitHomePosition = nil
 
         clearAllPlayerBillboards()
         clearAllGodBillboards()
@@ -1776,6 +2261,26 @@ local function onCharacterAdded(newChar)
     if climbEnabled then hum.MaxSlopeAngle = 90 end
 end
 LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+
+-- =============================================
+-- AUTO LOAD SAVED CONFIG ON START
+-- =============================================
+task.spawn(function()
+    task.wait(1)
+
+    if not readfile or not isfile then return end
+    if not isfile("BoogaToolsPro_SavedConfig.json") then return end
+
+    local success, config = pcall(function()
+        local raw = readfile("BoogaToolsPro_SavedConfig.json")
+        return HttpService:JSONDecode(raw)
+    end)
+
+    if not success or not config then return end
+
+    applyConfigValues(config)
+    Notify{ Title = "Config", Content = "Previous settings restored", Duration = 3 }
+end)
 
 Notify{
     Title = "Booga Tools Pro",
