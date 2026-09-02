@@ -1,5 +1,5 @@
 -- =============================================
--- BOOGA TOOLS PRO – RAYFIELD VERSION (FULL + HOTKEY + CONFIG SAVE + CLICK SPEED)
+-- BOOGA TOOLS PRO – RAYFIELD VERSION (FULL + HOTKEY + CONFIG SAVE + CLICK SPEED + OBSTACLE AVOIDANCE)
 -- =============================================
 
 -- LOAD RAYFIELD UI
@@ -19,6 +19,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local GuiService = game:GetService("GuiService")
+local PathfindingService = game:GetService("PathfindingService")
 
 -- ===== CHECK DRAWING SUPPORT =====
 local hasDrawing = pcall(function() return Drawing end)
@@ -803,6 +804,99 @@ ESPTab:CreateToggle({
 -- TAB 3: AUTO FARM
 -- =============================================
 
+-- Safe Obstacle Avoiding Pathfinding Tween
+local function smartTween(targetCFrame, speed, checkToggle)
+    local character = LocalPlayer.Character
+    if not character then return false end
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return false end
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then return false end
+
+    speed = speed or 16
+    local startPos = rootPart.Position
+    local endPos = targetCFrame.Position
+    local totalDist = (startPos - endPos).Magnitude
+
+    if totalDist < 1.5 then return true end
+
+    if totalDist < 6 then
+        local tweenInfo = TweenInfo.new(totalDist / speed, Enum.EasingStyle.Linear)
+        local tween = TweenService:Create(rootPart, tweenInfo, {CFrame = targetCFrame})
+        currentTween = tween
+        fruitTweenObj = tween
+        tween:Play()
+        tween.Completed:Wait()
+        currentTween = nil
+        fruitTweenObj = nil
+        return true
+    end
+
+    local path = PathfindingService:CreatePath({
+        AgentRadius = 2.5,
+        AgentHeight = 5,
+        AgentCanJump = true,
+        WaypointSpacing = 6
+    })
+
+    local success, _ = pcall(function()
+        path:ComputeAsync(startPos, endPos)
+    end)
+
+    if success and path.Status == Enum.PathStatus.Success then
+        local waypoints = path:GetWaypoints()
+        for i = 2, #waypoints do
+            if checkToggle and not checkToggle() then return false end
+
+            local waypoint = waypoints[i]
+            local wpPos = waypoint.Position
+
+            -- Locked horizontal look direction strictly prevents any NaN Y calculations!
+            local direction = (wpPos - rootPart.Position)
+            local directionHorizontal = Vector3.new(direction.X, 0, direction.Z)
+            local wpCFrame
+
+            if directionHorizontal.Magnitude > 0.1 then
+                wpCFrame = CFrame.new(wpPos, wpPos + directionHorizontal)
+            else
+                wpCFrame = CFrame.new(wpPos) * (rootPart.CFrame - rootPart.CFrame.Position)
+            end
+
+            local dist = (rootPart.Position - wpPos).Magnitude
+            local tweenInfo = TweenInfo.new(dist / speed, Enum.EasingStyle.Linear)
+            local tween = TweenService:Create(rootPart, tweenInfo, {CFrame = wpCFrame})
+
+            currentTween = tween
+            fruitTweenObj = tween
+
+            tween:Play()
+            tween.Completed:Wait()
+        end
+
+        if checkToggle and checkToggle() then
+            local dist = (rootPart.Position - endPos).Magnitude
+            local tweenInfo = TweenInfo.new(dist / speed, Enum.EasingStyle.Linear)
+            local tween = TweenService:Create(rootPart, tweenInfo, {CFrame = targetCFrame})
+            currentTween = tween
+            fruitTweenObj = tween
+            tween:Play()
+            tween.Completed:Wait()
+        end
+    else
+        local tweenInfo = TweenInfo.new(totalDist / speed, Enum.EasingStyle.Linear)
+        local tween = TweenService:Create(rootPart, tweenInfo, {CFrame = targetCFrame})
+        currentTween = tween
+        fruitTweenObj = tween
+        tween:Play()
+        tween.Completed:Wait()
+    end
+
+    currentTween = nil
+    fruitTweenObj = nil
+    return true
+end
+
+
 -- ======= SECTION 1: ICE CHUNK =======
 AutoFarmTab:CreateSection("Ice Chunk Farm")
 
@@ -811,7 +905,7 @@ local autoClickEnabled = false
 local autoPickupEnabled = false
 local chunkDistance = 5
 local clickPositionMode = "Center"
-local autoClickInterval = 0.1 -- Default click interval (speed)
+local autoClickInterval = 0.1
 local zonePart = nil
 local processing = false
 local originalCFrame = nil
@@ -918,42 +1012,25 @@ local function findIceChunkInZone()
     return nil
 end
 
-local function tweenToCFrame(targetCFrame)
-    local character = LocalPlayer.Character
-    if not character then return end
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return end
-    local humanoid = character:FindFirstChild("Humanoid")
-    if not humanoid or humanoid.Health <= 0 then return end
-    local dist = (rootPart.Position - targetCFrame.Position).Magnitude
-    if dist < 0.5 then return end
-    local tweenInfo = TweenInfo.new(dist / 16, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-    local tween = TweenService:Create(rootPart, tweenInfo, {CFrame = targetCFrame})
-    currentTween = tween
-    isTweening = true
-    tween:Play()
-    tween.Completed:Wait()
-    currentTween = nil
-    isTweening = false
-end
-
 local function tweenPlayerToTarget(model)
     local character = LocalPlayer.Character
     if not character then return end
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     if not rootPart then return end
+
     originalCFrame = rootPart.CFrame
     local modelPos = model:GetPivot().Position
     local currentPos = rootPart.Position
     local dir = (currentPos - modelPos).Magnitude > 0 and (currentPos - modelPos).Unit or Vector3.new(0, 0, 1)
     local targetPos = modelPos + dir * chunkDistance
     local targetCFrame = CFrame.new(targetPos, modelPos)
-    tweenToCFrame(targetCFrame)
+
+    smartTween(targetCFrame, 16, function() return autoChunkEnabled end)
 end
 
 local function tweenBack()
     if not originalCFrame then return end
-    tweenToCFrame(originalCFrame)
+    smartTween(originalCFrame, 16, function() return autoChunkEnabled end)
     originalCFrame = nil
 end
 
@@ -979,7 +1056,6 @@ local function doAutoClick()
         centerY = inset.Y + 50
     end
 
-    -- Hide dot briefly so click passes through
     if clickDot and clickDot.Dot then
         clickDot.Dot.Visible = false
     end
@@ -1087,7 +1163,7 @@ autoClickToggleObj = AutoFarmTab:CreateToggle({
             clickTask = task.spawn(function()
                 while autoClickEnabled do
                     doAutoClick()
-                    task.wait(autoClickInterval) -- Speed interval adjusted dynamically
+                    task.wait(autoClickInterval)
                 end
             end)
             Notify{ Title = "Auto Click", Content = "Enabled", Duration = 2 }
@@ -1099,7 +1175,6 @@ autoClickToggleObj = AutoFarmTab:CreateToggle({
     end
 })
 
--- Adjustable interval (speed) for auto clicking
 AutoFarmTab:CreateSlider({
     Name = "Click Interval (Speed)",
     Range = {0.01, 1},
@@ -1290,36 +1365,25 @@ local function plantFruitLoop()
     end
 end
 
--- Fruit tween system
+-- Wrapper to trigger safe pathfinding tween system
 local function fruitTweenTo(targetCFrame)
-    local character = LocalPlayer.Character
-    if not character then return false end
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return false end
-    local humanoid = character:FindFirstChild("Humanoid")
-    if not humanoid or humanoid.Health <= 0 then return false end
-
-    local dist = (rootPart.Position - targetCFrame.Position).Magnitude
-    if dist < 0.5 then return true end
-
-    local tweenInfo = TweenInfo.new(dist / 16, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-    local tween = TweenService:Create(rootPart, tweenInfo, {CFrame = targetCFrame})
-    fruitTweenObj = tween
-
-    tween:Play()
-    tween.Completed:Wait()
-
-    fruitTweenObj = nil
-    return true
+    return smartTween(targetCFrame, 16, function() return fruitTweenEnabled end)
 end
 
-local function fruitTweenToPart(modelPart, standDist)
+-- Your exact modified fruitTweenToPart function that raises 5 studs for box targets
+local function fruitTweenToPart(modelPart, standDist, targetType)
     local character = LocalPlayer.Character
     if not character then return false end
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     if not rootPart then return false end
 
     local modelPos = modelPart.Position
+
+    -- Raise tween target 5 studs higher if target is a box
+    if targetType == "box" then
+        modelPos = modelPos + Vector3.new(0, 5, 0)
+    end
+
     local currentPos = rootPart.Position
     local dir = (currentPos - modelPos).Magnitude > 0 and (currentPos - modelPos).Unit or Vector3.new(0, 0, 1)
     local targetPos = modelPos + dir * standDist
@@ -1447,7 +1511,7 @@ local function fruitTweenLoop()
             if not fruitTweenEnabled then break end
 
             if isTargetValid(target) then
-                fruitTweenToPart(target.Part, fruitStandDistance)
+                fruitTweenToPart(target.Part, fruitStandDistance, target.Type)
 
                 if not fruitTweenEnabled then break end
 
