@@ -62,40 +62,70 @@ local function Notify(args)
     end
 end
 
--- ===== TEAM CHECK =====
+-- ===== TEAM CHECK (DÙNG CHUNG CHO PVP) =====
 local function isSameTeam(player)
     if not player or not LocalPlayer then return false end
+    local playerTeam = player.Team and player.Team.Name or (player.TeamColor and player.TeamColor.Name or "NoTribe")
+    local myTeam = LocalPlayer.Team and LocalPlayer.Team.Name or (LocalPlayer.TeamColor and LocalPlayer.TeamColor.Name or "NoTribe")
+    
+    if playerTeam == "NoTribe" or myTeam == "NoTribe" then return false end
+    return playerTeam == myTeam
+end
 
-    local playerTeam = nil
-    local myTeam = nil
-
-    if player.Team then
-        playerTeam = player.Team.Name
-    elseif player.TeamColor then
-        playerTeam = player.TeamColor.Name
-    else
-        playerTeam = "NoTribe"
+-- ===== PROXIMITY WARNING (BỎ BỎ QUA ĐỒNG ĐỘI) =====
+-- Thêm điều kiện `not isSameTeam(player)` vào vòng lặp:
+for _, player in pairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer and not isSameTeam(player) then
+        local pchar = player.Character
+        local root = pchar and pchar:FindFirstChild("HumanoidRootPart")
+        if root then
+            local dist = (root.Position - hrp.Position).Magnitude
+            if dist <= 100 then
+                table.insert(warnPlayers, {Name = player.Name, Dist = math.floor(dist)})
+            end
+        end
     end
+end
 
-    if LocalPlayer.Team then
-        myTeam = LocalPlayer.Team.Name
-    elseif LocalPlayer.TeamColor then
-        myTeam = LocalPlayer.TeamColor.Name
-    else
-        myTeam = "NoTribe"
+-- ===== DYNAMIC HITBOX (CHỈ PHÓNG TO KẺ THÙ) =====
+local function updateHitbox()
+    if not hitboxActive or not LocalPlayer.Character then return end
+    local localRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not localRoot then return end
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local pchar = player.Character
+            local rootPart = pchar and pchar:FindFirstChild("HumanoidRootPart")
+            if rootPart then
+                if isSameTeam(player) then
+                    -- Đồng đội: Giữ kích thước gốc
+                    rootPart.Size = Vector3.new(2, 1, 1)
+                    rootPart.Transparency = 0
+                else
+                    -- Kẻ thù: Phóng to Hitbox
+                    local dist = (rootPart.Position - localRoot.Position).Magnitude
+                    local size = (dist >= 10 and Vector3.new(15, 15, 15)) or (dist <= 5 and Vector3.new(2, 1, 1)) or (Vector3.new(2, 1, 1) + (Vector3.new(15, 15, 15) - Vector3.new(2, 1, 1)) * ((dist - 5) / 5))
+                    rootPart.Size = size
+                    rootPart.Transparency = 0.7
+                    rootPart.Color = Color3.fromRGB(255, 0, 0)
+                end
+            end
+        end
     end
+end
 
-    if playerTeam == "NoTribe" or myTeam == "NoTribe" then
-        return false
+-- ===== AUTO HEAL V2 (CHỈ KÍCH HOẠT KHI KẺ THÙ Ở GẦN) =====
+-- Thêm điều kiện `not isSameTeam(player)` vào check khoảnh cách:
+for _, player in pairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer and not isSameTeam(player) then
+        local pChar = player.Character
+        local pRoot = pChar and pChar:FindFirstChild("HumanoidRootPart")
+        if pRoot and (pRoot.Position - hrp.Position).Magnitude <= 7 then
+            hasEnemy = true
+            break
+        end
     end
-
-    if player.Team and LocalPlayer.Team then
-        return player.Team == LocalPlayer.Team
-    elseif player.TeamColor and LocalPlayer.TeamColor then
-        return player.TeamColor == LocalPlayer.TeamColor
-    end
-
-    return false
 end
 
 -- ===== CREATE WINDOW =====
@@ -270,6 +300,7 @@ CombatTab:CreateToggle({
 
 local healRunning = false
 local healTask = nil
+local healFireInterval = 0.1
 local byteNetRemote = nil
 
 local function getByteNetRemote()
@@ -339,7 +370,7 @@ local function healLoopFunction()
                 if not currentHum then break end
                 if currentHum.Health >= 100 then break end
                 sendHeal()
-                task.wait(0.0001)
+                task.wait(healFireInterval)
                 if tick() - startTime > 2 then break end
             end
         end
@@ -413,7 +444,7 @@ local function healV2LoopFunction()
             local startTime = tick()
             while healV2Running and autoHealV2Enabled and LocalPlayer.Character do
                 sendHeal()
-                task.wait()
+                task.wait(healFireInterval)
                 if tick() - startTime > 2 then break end
             end
         end
@@ -450,6 +481,18 @@ autoHealV2ToggleObj = CombatTab:CreateToggle({
             healV2Running = false
             Notify{ Title = "Auto Heal V2", Content = "Disabled", Duration = 2 }
         end
+    end
+})
+
+CombatTab:CreateSlider({
+    Name = "heal speed",
+    Range = {0.01, 1},
+    Increment = 0.01,
+    Suffix = "s",
+    CurrentValue = 0.1,
+    Flag = "healFireIntervalSlider",
+    Callback = function(v)
+        healFireInterval = math.clamp(v, 0.01, 1)
     end
 })
 
@@ -903,6 +946,7 @@ AutoFarmTab:CreateSection("Ice Chunk Farm")
 local autoChunkEnabled = false
 local autoClickEnabled = false
 local autoPickupEnabled = false
+local autoPickupInterval = 0.05
 local chunkDistance = 5
 local clickPositionMode = "Center"
 local autoClickInterval = 0.1
@@ -1072,7 +1116,7 @@ end
 local function createPickupBuffer(entityID)
     local b = buffer.create(6)
     buffer.writeu8(b, 0, 0)
-    buffer.writeu8(b, 1, 59)
+    buffer.writeu8(b, 1, 51)
     buffer.writeu32(b, 2, entityID)
     return b
 end
@@ -1106,7 +1150,7 @@ local function autoPickupLoop()
             if not pos then continue end
             if (pos - hrp.Position).Magnitude <= 30 then
                 sendPickup(entityID)
-                task.wait(0.05)
+                task.wait(autoPickupInterval)
             end
         end
         task.wait(0.2)
@@ -1260,6 +1304,18 @@ AutoFarmTab:CreateToggle({
     end
 })
 
+AutoFarmTab:CreateSlider({
+    Name = "Auto Pickup Fire Interval",
+    Range = {0.01, 1},
+    Increment = 0.01,
+    Suffix = "s",
+    CurrentValue = 0.05,
+    Flag = "autoPickupIntervalSlider",
+    Callback = function(v)
+        autoPickupInterval = math.clamp(v, 0.01, 1)
+    end
+})
+
 -- ======= SECTION 2: FRUIT FARM =======
 AutoFarmTab:CreateSection("Fruit Farm")
 
@@ -1290,7 +1346,7 @@ local fruitStandDistance = 3
 local function createPickFruitBuffer(entityID)
     local b = buffer.create(6)
     buffer.writeu8(b, 0, 0)
-    buffer.writeu8(b, 1, 59)
+    buffer.writeu8(b, 1, 51)
     buffer.writeu32(b, 2, entityID)
     return b
 end
@@ -1298,7 +1354,7 @@ end
 local function createPlantFruitBuffer(entityID, fruitID)
     local b = buffer.create(8)
     buffer.writeu8(b, 0, 0)
-    buffer.writeu8(b, 1, 96)
+    buffer.writeu8(b, 1,85)
     buffer.writeu32(b, 2, entityID)
     buffer.writeu16(b, 6, fruitID)
     return b
@@ -1777,7 +1833,7 @@ local function getFoodLayoutOrder(foodName)
 end
 
 local function createEatBuffer(layoutOrder)
-    local bytes = { 0, 67, layoutOrder, 0 }
+    local bytes = { 0, 59, layoutOrder, 0 }
     local b = buffer.create(#bytes)
     for i = 1, #bytes do
         buffer.writeu8(b, i - 1, bytes[i])
@@ -2044,15 +2100,15 @@ MiscTab:CreateToggle({
         if v then
             zoomCon = RunService.RenderStepped:Connect(function()
                 pcall(function()
-                    Camera.MaxZoomDistance = 999999999
-                    Camera.MinZoomDistance = 0.5
+                    LocalPlayer.CameraMaxZoomDistance = 999999999
+                    LocalPlayer.CameraMinZoomDistance = 0.5
                 end)
             end)
             Notify{ Title = "Infinite Zoom", Content = "Enabled", Duration = 2 }
         else
             pcall(function()
-                Camera.MaxZoomDistance = 400
-                Camera.MinZoomDistance = 1
+                LocalPlayer.CameraMaxZoomDistance = 400
+                LocalPlayer.CameraMinZoomDistance = 1
             end)
             Notify{ Title = "Infinite Zoom", Content = "Disabled", Duration = 2 }
         end
@@ -2087,6 +2143,7 @@ local function buildConfigTable()
         hitboxToggle = hitboxActive,
         autoHealToggle = autoHealEnabled,
         autoHealV2Toggle = autoHealV2Enabled,
+        healFireInterval = healFireInterval,
         espToggle = espEnabled,
         espTeamColor = espTeamColorEnabled,
         espGodToggle = espGodEnabled,
@@ -2099,6 +2156,7 @@ local function buildConfigTable()
         autoClickInterval = autoClickInterval,
         autoClickHotkey = autoClickHotkey.Name,
         autoPickupToggle = autoPickupEnabled,
+        autoPickupInterval = autoPickupInterval,
         pickFruitToggle = pickFruitEnabled,
         pickFruitRange = pickFruitRange,
         selectedFruit = selectedFruit,
@@ -2132,6 +2190,8 @@ local function applyConfigValues(config)
     if config.clickPosition then clickPositionMode = config.clickPosition end
     if config.selectedOres then selectedOres = config.selectedOres end
     if config.autoClickInterval then autoClickInterval = config.autoClickInterval end
+    if config.autoPickupInterval then autoPickupInterval = math.clamp(tonumber(config.autoPickupInterval) or 0.05, 0.01, 1) end
+    if config.healFireInterval then healFireInterval = math.clamp(tonumber(config.healFireInterval) or 0.1, 0.01, 1) end
 
     if config.autoClickHotkey then
         local keyOk, keyVal = pcall(function()
@@ -2148,6 +2208,54 @@ local function applyConfigValues(config)
     if config.muteNotifications ~= nil then
         notifyEnabled = not config.muteNotifications
     end
+
+    local flagValues = {
+        warningToggle = config.warningToggle,
+        hitboxToggle = config.hitboxToggle,
+        autoHealToggle = config.autoHealToggle,
+        autoHealV2Toggle = config.autoHealV2Toggle,
+        espToggle = config.espToggle,
+        espTeamColor = config.espTeamColor,
+        espGodToggle = config.espGodToggle,
+        espOreToggle = config.espOreToggle,
+        oreDropdown = config.selectedOres,
+        autoChunkToggle = config.autoChunkToggle,
+        chunkDistanceSlider = config.chunkDistance,
+        autoClickToggle = config.autoClickToggle,
+        clickPositionDropdown = config.clickPosition,
+        clickSpeedSlider = config.autoClickInterval,
+        autoPickupToggle = config.autoPickupToggle,
+        autoPickupIntervalSlider = config.autoPickupInterval,
+        pickFruitToggle = config.pickFruitToggle,
+        pickFruitRangeSlider = config.pickFruitRange,
+        fruitDropdown = config.selectedFruit,
+        plantFruitToggle = config.plantFruitToggle,
+        plantFruitRangeSlider = config.plantFruitRange,
+        fruitTweenToggle = config.fruitTweenToggle,
+        autoEatToggle = config.autoEatToggle,
+        foodDropdown = config.selectedFood,
+        hungerThresholdSlider = config.hungerThreshold,
+        fullbrightToggle = config.fullbrightToggle,
+        noFogToggle = config.noFogToggle,
+        speedToggle = config.speedToggle,
+        speedSlider = config.speedValue,
+        climbToggle = config.climbToggle,
+        gravityToggle = config.gravityToggle,
+        gravitySlider = config.gravityValue,
+        zoomToggle = config.zoomToggle,
+        muteNotifications = config.muteNotifications,
+        healFireIntervalSlider = config.healFireInterval
+    }
+
+    for flag, value in pairs(flagValues) do
+        if value ~= nil then
+            pcall(function()
+                if Rayfield.Flags and Rayfield.Flags[flag] and Rayfield.Flags[flag].Set then
+                    Rayfield.Flags[flag]:Set(value)
+                end
+            end)
+        end
+    end
 end
 
 SettingsTab:CreateButton({
@@ -2159,10 +2267,14 @@ SettingsTab:CreateButton({
 
         if success then
             if writefile then
-                pcall(function()
+                local fileSuccess = pcall(function()
                     writefile("BoogaToolsPro_SavedConfig.json", encoded)
                 end)
-                Notify{ Title = "Config", Content = "Saved successfully", Duration = 2 }
+                if fileSuccess then
+                    Notify{ Title = "Config", Content = "Saved successfully", Duration = 2 }
+                else
+                    Notify{ Title = "Config", Content = "Failed to save", Duration = 3 }
+                end
             else
                 Notify{ Title = "Config", Content = "File system not supported", Duration = 3 }
             end
@@ -2305,8 +2417,8 @@ SettingsTab:CreateButton({
         Lighting.FogEnd = 1000
         Lighting.FogStart = 0
         pcall(function()
-            Camera.MaxZoomDistance = 400
-            Camera.MinZoomDistance = 1
+            LocalPlayer.CameraMaxZoomDistance = 400
+            LocalPlayer.CameraMinZoomDistance = 1
         end)
 
         Notify{ Title = "Cleanup", Content = "Complete", Duration = 2 }
