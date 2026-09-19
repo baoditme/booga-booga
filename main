@@ -52,6 +52,16 @@ zoomEnabled = false
 autoHutEnabled = false
 autoHutDistance = 3
 hasPlacedHut = false
+espTraderEnabled = false
+
+-- ===== REMOTE OPCODES (Dễ dàng thay đổi khi game update) =====
+OPCODES = {
+    PICKUP = 51,   -- Nhặt đồ / Thu hoạch quả
+    EAT    = 59,   -- Ăn thức ăn
+    PLACE  = 68,   -- Đặt công trình (Plant Box / Hut)
+    PLANT  = 85,   -- Gieo hạt giống (Plant Box)
+}
+
 
 -- ===== NOTIFY WRAPPER =====
 local function Notify(args)
@@ -85,7 +95,7 @@ local function updateHitbox()
     if not localRoot then return end
 
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
+    if player ~= LocalPlayer and player.UserId ~= LocalPlayer.UserId then
             local pchar = player.Character
             local rootPart = pchar and pchar:FindFirstChild("HumanoidRootPart")
             if rootPart then
@@ -215,7 +225,7 @@ CombatTab:CreateToggle({
 
                 -- Quét tìm đối thủ trong tầm 100 studs
                 for _, player in pairs(Players:GetPlayers()) do
-                    if player ~= LocalPlayer then
+    if player ~= LocalPlayer and player.UserId ~= LocalPlayer.UserId then
                         if isSameTeam(player) then continue end
                         local pchar = player.Character
                         if pchar then
@@ -372,7 +382,7 @@ end
 local function createHealBufferDynamic()
     local layoutOrder = getBloodfruitLayoutOrder()
     if not layoutOrder then return nil end
-    local bytes = { 0, 67, layoutOrder, 0 }
+    local bytes = { 0, OPCODES.EAT, layoutOrder, 0 }
     local b = buffer.create(#bytes)
     for i = 1, #bytes do
         buffer.writeu8(b, i - 1, bytes[i])
@@ -463,7 +473,7 @@ local function healV2LoopFunction()
 
         local hasEnemy = false
         for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer and not isSameTeam(player) then
+            if player ~= LocalPlayer and player.UserId ~= LocalPlayer.UserId and not isSameTeam(player) then
                 local pChar = player.Character
                 local pRoot = pChar and pChar:FindFirstChild("HumanoidRootPart")
                 if pRoot then
@@ -550,7 +560,7 @@ local HUT_COOLDOWN = 10 -- Cooldown 10 giây
 local function buildBigOlHutBuffer(x, y, z)
     local b = buffer.create(33)
     buffer.writeu8(b, 0, 0)
-    buffer.writeu8(b, 1, 68)
+    buffer.writeu8(b, 1, OPCODES.PLACE)
     buffer.writeu8(b, 2, 11)
     buffer.writeu8(b, 3, 0)
 
@@ -648,7 +658,7 @@ local function autoHutLoop()
             local enemyNearby = false
 
             for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer and not isSameTeam(player) then
+                if player ~= LocalPlayer and player.UserId ~= LocalPlayer.UserId and not isSameTeam(player) then
                     local eChar = player.Character
                     local eHrp = eChar and eChar:FindFirstChild("HumanoidRootPart")
                     local eHum = eChar and eChar:FindFirstChild("Humanoid")
@@ -1059,6 +1069,92 @@ ESPTab:CreateToggle({
 })
 
 -- =============================================
+-- ESP WANDERING TRADER
+-- =============================================
+local espTraderEnabled = false
+local traderBillboard = nil
+local traderRenderConn = nil
+
+local function clearTraderESP()
+    if traderBillboard then
+        if traderBillboard.Bill then traderBillboard.Bill:Destroy() end
+        traderBillboard = nil
+    end
+end
+
+local function stepTraderESP()
+    local localChar = LocalPlayer.Character
+    local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+    if not localRoot then return end
+
+    local dialogNPCs = Workspace:FindFirstChild("DialogNPCs")
+    local normalNPCs = dialogNPCs and dialogNPCs:FindFirstChild("Normal")
+    local trader = normalNPCs and normalNPCs:FindFirstChild("Wandering Trader")
+
+    if trader and not traderBillboard then
+        local primary = trader.PrimaryPart or trader:FindFirstChildWhichIsA("BasePart") or trader:FindFirstChild("Head")
+        if primary then
+            local bill = Instance.new("BillboardGui")
+            bill.Name = "TraderESP"
+            bill.Size = UDim2.new(0, 200, 0, 35)
+            bill.Adornee = primary
+            bill.AlwaysOnTop = true
+            bill.StudsOffset = Vector3.new(0, 3, 0)
+            bill.Parent = primary
+
+            local bg = Instance.new("Frame")
+            bg.Size = UDim2.new(1, 0, 1, 0)
+            bg.BackgroundTransparency = 1
+            bg.BorderSizePixel = 0
+            bg.Parent = bill
+
+            local label = Instance.new("TextLabel")
+            label.Size = UDim2.new(1, 0, 1, 0)
+            label.BackgroundTransparency = 1
+            label.Text = "Wandering Trader [...m]"
+            label.TextColor3 = Color3.fromRGB(0, 255, 220) -- Màu xanh ngọc sáng
+            label.Font = Enum.Font.SourceSans
+            label.TextSize = 18
+            label.Parent = bg
+
+            local stroke = Instance.new("UIStroke")
+            stroke.Thickness = 1.5
+            stroke.Color = Color3.fromRGB(0, 0, 0)
+            stroke.Parent = label
+
+            traderBillboard = { Bill = bill, Label = label, Part = primary, Model = trader }
+        end
+    end
+
+    if traderBillboard then
+        if not traderBillboard.Model or not traderBillboard.Model.Parent then
+            clearTraderESP()
+        else
+            local dist = (traderBillboard.Part.Position - localRoot.Position).Magnitude
+            traderBillboard.Label.Text = "Wandering Trader [" .. math.floor(dist) .. "m]"
+        end
+    end
+end
+
+ESPTab:CreateToggle({
+    Name = "ESP Wandering Trader",
+    CurrentValue = false,
+    Flag = "espTraderToggle",
+    Callback = function(v)
+        espTraderEnabled = v
+        if v then
+            if traderRenderConn then traderRenderConn:Disconnect() end
+            traderRenderConn = RunService.RenderStepped:Connect(stepTraderESP)
+            Notify{ Title = "ESP Trader", Content = "Enabled", Duration = 2 }
+        else
+            if traderRenderConn then traderRenderConn:Disconnect(); traderRenderConn = nil end
+            clearTraderESP()
+            Notify{ Title = "ESP Trader", Content = "Disabled", Duration = 2 }
+        end
+    end
+})
+
+-- =============================================
 -- TAB 3: AUTO FARM
 -- =============================================
 
@@ -1327,7 +1423,7 @@ end
 local function createPickupBuffer(entityID)
     local b = buffer.create(6)
     buffer.writeu8(b, 0, 0)
-    buffer.writeu8(b, 1, 51)
+    buffer.writeu8(b, 1, OPCODES.PICKUP)
     buffer.writeu32(b, 2, entityID)
     return b
 end
@@ -1556,7 +1652,7 @@ local fruitStandDistance = 3
 local function createPickFruitBuffer(entityID)
     local b = buffer.create(6)
     buffer.writeu8(b, 0, 0)
-    buffer.writeu8(b, 1, 51)
+    buffer.writeu8(b, 1, OPCODES.PICKUP)
     buffer.writeu32(b, 2, entityID)
     return b
 end
@@ -1564,7 +1660,7 @@ end
 local function createPlantFruitBuffer(entityID, fruitID)
     local b = buffer.create(8)
     buffer.writeu8(b, 0, 0)
-    buffer.writeu8(b, 1, 85)
+    buffer.writeu8(b, 1, OPCODES.PLANT)
     buffer.writeu32(b, 2, entityID)
     buffer.writeu16(b, 6, fruitID)
     return b
@@ -1935,7 +2031,7 @@ local PLANT_BOX_GRID_ROWS = 4
 local function buildPlantBoxBuffer(x, y, z)
     local b = buffer.create(31)
     buffer.writeu8(b, 0, 0)
-    buffer.writeu8(b, 1, 68)
+    buffer.writeu8(b, 1, OPCODES.PLACE)
     buffer.writeu8(b, 2, 9)
     buffer.writeu8(b, 3, 0)
 
@@ -2403,7 +2499,7 @@ local function getFoodLayoutOrder(foodName)
 end
 
 local function createEatBuffer(layoutOrder)
-    local bytes = { 0, 59, layoutOrder, 0 }
+    local bytes = { 0, OPCODES.EAT, layoutOrder, 0 }
     local b = buffer.create(#bytes)
     for i = 1, #bytes do
         buffer.writeu8(b, i - 1, bytes[i])
@@ -3072,6 +3168,7 @@ local function applyConfigValues(config)
         espTeamColor = config.espTeamColor,
         espGodToggle = config.espGodToggle,
         espOreToggle = config.espOreToggle,
+        espTraderToggle = config.espTraderToggle,
         oreDropdown = config.selectedOres,
         autoChunkToggle = config.autoChunkToggle,
         chunkDistanceSlider = config.chunkDistance,
@@ -3188,6 +3285,8 @@ SettingsTab:CreateButton({
 
         if warningSound then warningSound:Stop() end
         if currentTween then currentTween:Cancel() end
+        if traderRenderConn then traderRenderConn:Disconnect() end
+clearTraderESP()
         destroyZone()
         removeClickDot()
         
