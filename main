@@ -1,25 +1,25 @@
 -- =============================================
--- BOOGA TOOLS PRO – RAYFIELD VERSION (FULL + HOTKEY + CONFIG SAVE + CLICK SPEED + OBSTACLE AVOIDANCE)
+-- BOOGA TOOLS PRO – RAYFIELD VERSION (FULL FIXED)
 -- =============================================
 
 -- LOAD RAYFIELD UI
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 -- ===== SERVICES =====
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
-local Camera = Workspace.CurrentCamera
-local LocalPlayer = Players.LocalPlayer
-local HttpService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
-local Lighting = game:GetService("Lighting")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local GuiService = game:GetService("GuiService")
-local PathfindingService = game:GetService("PathfindingService")
+Players = game:GetService("Players")
+RunService = game:GetService("RunService")
+UserInputService = game:GetService("UserInputService")
+Workspace = game:GetService("Workspace")
+Camera = Workspace.CurrentCamera
+LocalPlayer = Players.LocalPlayer
+HttpService = game:GetService("HttpService")
+TeleportService = game:GetService("TeleportService")
+Lighting = game:GetService("Lighting")
+ReplicatedStorage = game:GetService("ReplicatedStorage")
+TweenService = game:GetService("TweenService")
+VirtualInputManager = game:GetService("VirtualInputManager")
+GuiService = game:GetService("GuiService")
+PathfindingService = game:GetService("PathfindingService")
 
 -- ===== CHECK DRAWING SUPPORT =====
 local hasDrawing = pcall(function() return Drawing end)
@@ -32,23 +32,26 @@ local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local hum = char:WaitForChild("Humanoid")
 
 -- ===== SYSTEM STATES =====
-local notifyEnabled = true
-local warningEnabled = false
-local hitboxActive = false
-local autoHealEnabled = false
-local autoHealV2Enabled = false
-local espEnabled = false
-local espTeamColorEnabled = false
-local espOreEnabled = false
-local espGodEnabled = false
-local fullbrightEnabled = false
-local noFogEnabled = false
-local speedEnabled = false
-local speedValue = 16
-local climbEnabled = false
-local gravityEnabled = false
-local gravityValue = 196.2
-local zoomEnabled = false
+notifyEnabled = true
+warningEnabled = false
+hitboxActive = false
+autoHealEnabled = false
+autoHealV2Enabled = false
+espEnabled = false
+espTeamColorEnabled = false
+espOreEnabled = false
+espGodEnabled = false
+fullbrightEnabled = false
+noFogEnabled = false
+speedEnabled = false
+speedValue = 16
+climbEnabled = false
+gravityEnabled = false
+gravityValue = 196.2
+zoomEnabled = false
+autoHutEnabled = false
+autoHutDistance = 3
+hasPlacedHut = false
 
 -- ===== NOTIFY WRAPPER =====
 local function Notify(args)
@@ -72,22 +75,10 @@ local function isSameTeam(player)
     return playerTeam == myTeam
 end
 
--- ===== PROXIMITY WARNING (BỎ BỎ QUA ĐỒNG ĐỘI) =====
--- Thêm điều kiện `not isSameTeam(player)` vào vòng lặp:
-for _, player in pairs(Players:GetPlayers()) do
-    if player ~= LocalPlayer and not isSameTeam(player) then
-        local pchar = player.Character
-        local root = pchar and pchar:FindFirstChild("HumanoidRootPart")
-        if root then
-            local dist = (root.Position - hrp.Position).Magnitude
-            if dist <= 100 then
-                table.insert(warnPlayers, {Name = player.Name, Dist = math.floor(dist)})
-            end
-        end
-    end
-end
+-- ===== DYNAMIC HITBOX =====
+local hitboxFullSize = Vector3.new(15, 15, 15)
+local hitboxDefaultSize = Vector3.new(2, 1, 1)
 
--- ===== DYNAMIC HITBOX (CHỈ PHÓNG TO KẺ THÙ) =====
 local function updateHitbox()
     if not hitboxActive or not LocalPlayer.Character then return end
     local localRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -99,31 +90,16 @@ local function updateHitbox()
             local rootPart = pchar and pchar:FindFirstChild("HumanoidRootPart")
             if rootPart then
                 if isSameTeam(player) then
-                    -- Đồng đội: Giữ kích thước gốc
-                    rootPart.Size = Vector3.new(2, 1, 1)
+                    rootPart.Size = hitboxDefaultSize
                     rootPart.Transparency = 0
                 else
-                    -- Kẻ thù: Phóng to Hitbox
                     local dist = (rootPart.Position - localRoot.Position).Magnitude
-                    local size = (dist >= 10 and Vector3.new(15, 15, 15)) or (dist <= 5 and Vector3.new(2, 1, 1)) or (Vector3.new(2, 1, 1) + (Vector3.new(15, 15, 15) - Vector3.new(2, 1, 1)) * ((dist - 5) / 5))
+                    local size = (dist >= 10 and hitboxFullSize) or (dist <= 5 and hitboxDefaultSize) or (hitboxDefaultSize + (hitboxFullSize - hitboxDefaultSize) * ((dist - 5) / 5))
                     rootPart.Size = size
                     rootPart.Transparency = 0.7
                     rootPart.Color = Color3.fromRGB(255, 0, 0)
                 end
             end
-        end
-    end
-end
-
--- ===== AUTO HEAL V2 (CHỈ KÍCH HOẠT KHI KẺ THÙ Ở GẦN) =====
--- Thêm điều kiện `not isSameTeam(player)` vào check khoảnh cách:
-for _, player in pairs(Players:GetPlayers()) do
-    if player ~= LocalPlayer and not isSameTeam(player) then
-        local pChar = player.Character
-        local pRoot = pChar and pChar:FindFirstChild("HumanoidRootPart")
-        if pRoot and (pRoot.Position - hrp.Position).Magnitude <= 7 then
-            hasEnemy = true
-            break
         end
     end
 end
@@ -159,18 +135,55 @@ local SettingsTab = Window:CreateTab("Settings", 4483362458)
 -- TAB 1: COMBAT
 -- =============================================
 
+-- =============================================
+-- PROXIMITY WARNING VỚI DÂY NEON ĐỎ NỐI ĐỐI THỦ
+-- =============================================
 local warningLoop
 local lastWarningTime = 0
 local warningSound = nil
+local warningSoundLoaded = false
+local warningSoundFile = "warning_alarm.mp3"
+local warningSoundUrl = "https://drive.google.com/uc?export=download&id=1HoH_Dg43hQ7q5B419CGwFlXfRf5k18Ao"
+
+-- Quản lý dây cảnh báo
+local warningLines = {}
+
+local function clearWarningLines()
+    for player, part in pairs(warningLines) do
+        if part then pcall(function() part:Destroy() end) end
+    end
+    table.clear(warningLines)
+end
 
 local function createWarningSound()
-    if not warningSound then
-        warningSound = Instance.new("Sound")
-        warningSound.Name = "WarningSound"
-        warningSound.SoundId = "rbxassetid://9126397040"
-        warningSound.Volume = 0.5
-        warningSound.Parent = Workspace
+    if warningSound and warningSoundLoaded then return end
+
+    if not isfile(warningSoundFile) then
+        local success, data = pcall(function()
+            return game:HttpGet(warningSoundUrl)
+        end)
+        if not success or not data or #data < 1000 then
+            warn("[Warning Sound] Failed to download audio file")
+            warningSound = Instance.new("Sound")
+            warningSound.Name = "WarningSound"
+            warningSound.SoundId = "rbxassetid://9126397040"
+            warningSound.Volume = 0.5
+            warningSound.Parent = Workspace
+            warningSoundLoaded = true
+            return
+        end
+        writefile(warningSoundFile, data)
     end
+
+    local customId = getcustomasset(warningSoundFile)
+
+    warningSound = Instance.new("Sound")
+    warningSound.Name = "WarningSound_Custom"
+    warningSound.SoundId = customId
+    warningSound.Volume = 0.7
+    warningSound.Looped = false
+    warningSound.Parent = Workspace
+    warningSoundLoaded = true
 end
 
 CombatTab:CreateToggle({
@@ -180,30 +193,86 @@ CombatTab:CreateToggle({
     Callback = function(v)
         warningEnabled = v
         if warningLoop then warningLoop:Disconnect() end
+        clearWarningLines() -- Xóa sạch dây cũ khi bật/tắt
+        
         if v then
             createWarningSound()
             warningLoop = RunService.Heartbeat:Connect(function()
                 if not warningEnabled then return end
-                if not LocalPlayer.Character then return end
+                if not LocalPlayer.Character then 
+                    clearWarningLines()
+                    return 
+                end
+                
                 local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                if not hrp then return end
+                if not hrp then 
+                    clearWarningLines()
+                    return 
+                end
 
                 local warnPlayers = {}
+                local currentNearbyPlayers = {}
+
+                -- Quét tìm đối thủ trong tầm 100 studs
                 for _, player in pairs(Players:GetPlayers()) do
                     if player ~= LocalPlayer then
                         if isSameTeam(player) then continue end
                         local pchar = player.Character
                         if pchar then
                             local root = pchar:FindFirstChild("HumanoidRootPart")
-                            if root then
+                            local humHealth = pchar:FindFirstChildOfClass("Humanoid")
+                            if root and humHealth and humHealth.Health > 0 then
                                 local dist = (root.Position - hrp.Position).Magnitude
                                 if dist <= 100 then
                                     table.insert(warnPlayers, {Name = player.Name, Dist = math.floor(dist)})
+                                    currentNearbyPlayers[player] = root -- Lưu lại thông tin gốc để vẽ dây
                                 end
                             end
                         end
                     end
                 end
+
+                -- Tạo và cập nhật dây Neon kết nối tới từng đối thủ
+                for player, enemyRoot in pairs(currentNearbyPlayers) do
+                    local part = warningLines[player]
+                    if not part or not part.Parent then
+                        -- Tạo dây mới nếu chưa có
+                        part = Instance.new("Part")
+                        part.Name = "WarningLine_" .. player.Name
+                        part.Anchored = true
+                        part.CanCollide = false
+                        part.CanTouch = false
+                        part.CanQuery = false
+                        part.CastShadow = false
+                        part.Material = Enum.Material.Neon
+                        part.Color = Color3.fromRGB(255, 0, 0) -- Màu đỏ
+                        part.Transparency = 0.7 -- Trong suốt 0.5
+                        
+                        -- Chuyển dạng khối sang dạng trục tròn (Cylinder) để giống sợi cáp
+                        
+                        
+                        part.Parent = Workspace
+                        warningLines[player] = part
+                    end
+                    
+                    -- Tính toán vị trí, kích cỡ dây kết nối
+                    local p1 = hrp.Position
+                    local p2 = enemyRoot.Position
+                    local dist = (p1 - p2).Magnitude
+                    
+                    part.Size = Vector3.new(0.2, 0.2, dist) -- Độ dày sợi dây là 0.2 studs
+                    part.CFrame = CFrame.lookAt(p1:Lerp(p2, 0.5), p2)
+                end
+
+                -- Xóa dây đối với những người đã chạy ra khỏi tầm hoặc thoát game
+                for player, part in pairs(warningLines) do
+                    if not currentNearbyPlayers[player] then
+                        pcall(function() part:Destroy() end)
+                        warningLines[player] = nil
+                    end
+                end
+
+                -- Âm thanh & Thông báo Notification
                 if #warnPlayers > 0 and os.time() - lastWarningTime >= 5 then
                     local names = ""
                     for i, p in ipairs(warnPlayers) do
@@ -228,46 +297,13 @@ CombatTab:CreateToggle({
             Notify{ Title = "Proximity Warning", Content = "Enabled", Duration = 2 }
         else
             if warningSound then warningSound:Stop() end
+            clearWarningLines()
             Notify{ Title = "Proximity Warning", Content = "Disabled", Duration = 2 }
         end
     end
 })
 
 local hitboxLoop = nil
-local hitboxFullSize = Vector3.new(15, 15, 15)
-local hitboxDefaultSize = Vector3.new(2, 1, 1)
-
-local function updateHitbox()
-    if not hitboxActive then return end
-    if not LocalPlayer.Character then return end
-    local localRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not localRoot then return end
-
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            if isSameTeam(player) then continue end
-            local pchar = player.Character
-            if pchar then
-                local rootPart = pchar:FindFirstChild("HumanoidRootPart")
-                if rootPart then
-                    local dist = (rootPart.Position - localRoot.Position).Magnitude
-                    local size
-                    if dist >= 10 then
-                        size = hitboxFullSize
-                    elseif dist <= 5 then
-                        size = hitboxDefaultSize
-                    else
-                        local t = (dist - 5) / (10 - 5)
-                        size = hitboxDefaultSize + (hitboxFullSize - hitboxDefaultSize) * t
-                    end
-                    rootPart.Size = size
-                    rootPart.Transparency = 0.7
-                    rootPart.Color = Color3.fromRGB(255, 0, 0)
-                end
-            end
-        end
-    end
-end
 
 CombatTab:CreateToggle({
     Name = "Dynamic Hitbox",
@@ -497,9 +533,216 @@ CombatTab:CreateSlider({
 })
 
 -- =============================================
+-- AUTO PLACE BIG OL' HUT (PVP - COOLDOWN 10S CHỐNG SPAM)
+-- =============================================
+CombatTab:CreateSection("Auto Defense")
+
+local autoHutEnabled = false
+local autoHutDistance = 3
+local autoHutTask = nil
+
+-- Cấu hình Cooldown
+local hasPlacedHut = false
+local lastLeftRangeTime = nil
+local HUT_COOLDOWN = 10 -- Cooldown 10 giây
+
+-- Buffer "Big Ol' Hut"
+local function buildBigOlHutBuffer(x, y, z)
+    local b = buffer.create(33)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, 68)
+    buffer.writeu8(b, 2, 11)
+    buffer.writeu8(b, 3, 0)
+
+    local name = "Big Ol' Hut"
+    for i = 1, #name do
+        buffer.writeu8(b, 3 + i, string.byte(name, i))
+    end
+
+    buffer.writef32(b, 15, x)
+    buffer.writef32(b, 19, y)
+    buffer.writef32(b, 23, z)
+
+    for i = 0, 5 do
+        buffer.writeu8(b, 27 + i, 0)
+    end
+
+    return b
+end
+
+-- Lấy vị trí đặt: X/Z tại vị trí nhân vật của mình, Y = mặt đất (raycast)
+local function getHutPlacementPos(myHrp)
+    local posX = myHrp.Position.X
+    local posZ = myHrp.Position.Z
+
+    local rayOrigin = Vector3.new(posX, myHrp.Position.Y + 10, posZ)
+    local rayDirection = Vector3.new(0, -100, 0)
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+
+    local ignoreList = {}
+    if LocalPlayer.Character then
+        table.insert(ignoreList, LocalPlayer.Character)
+    end
+    params.FilterDescendantsInstances = ignoreList
+
+    local result = workspace:Raycast(rayOrigin, rayDirection, params)
+    local finalY = result and result.Position.Y or myHrp.Position.Y
+
+    return Vector3.new(posX, finalY, posZ)
+end
+
+-- Hàm kiểm tra xem Hut đã xuất hiện trong Deployables chưa
+local function verifyHutPlacement(targetPos, timeout)
+    task.spawn(function()
+        local deployables = workspace:FindFirstChild("Deployables")
+        local isSuccess = false
+        local startTime = tick()
+        local maxWait = timeout or 1.0
+        local checkRadius = 6 -- Khoảng cách tối đa so với tọa độ đặt
+
+        while (tick() - startTime) < maxWait do
+            if deployables then
+                for _, item in pairs(deployables:GetChildren()) do
+                    if item.Name == "Big Ol' Hut" then
+                        local pivotPos = item:GetPivot().Position
+                        -- So sánh khoảng cách X và Z
+                        local dist = (Vector2.new(pivotPos.X, pivotPos.Z) - Vector2.new(targetPos.X, targetPos.Z)).Magnitude
+                        if dist <= checkRadius then
+                            isSuccess = true
+                            break
+                        end
+                    end
+                end
+            end
+
+            if isSuccess then break end
+            task.wait(0.1)
+        end
+
+        if isSuccess then
+            Notify{
+                Title = "Auto Hut",
+                Content = "Placed done!",
+                Duration = 2
+            }
+        else
+            -- Đặt thất bại -> Cho phép đặt lại
+            hasPlacedHut = false
+            Notify{
+                Title = "Auto Hut",
+                Content = "place failed!",
+                Duration = 2
+            }
+        end
+    end)
+end
+
+local function autoHutLoop()
+    while autoHutEnabled do
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+        if hrp then
+            local enemyNearby = false
+
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and not isSameTeam(player) then
+                    local eChar = player.Character
+                    local eHrp = eChar and eChar:FindFirstChild("HumanoidRootPart")
+                    local eHum = eChar and eChar:FindFirstChild("Humanoid")
+
+                    if eHrp and eHum and eHum.Health > 0 then
+                        local dist = (eHrp.Position - hrp.Position).Magnitude
+
+                        if dist <= autoHutDistance then
+                            enemyNearby = true
+
+                            -- NẾU CHƯA ĐẶT HUT VÀ HẾT COOLDOWN -> ĐẶT HUT
+                            if not hasPlacedHut then
+                                local placePos = getHutPlacementPos(hrp)
+                                local remote = getByteNetRemote()
+                                if remote then
+                                    hasPlacedHut = true
+                                    lastLeftRangeTime = nil -- Xóa đếm ngược
+
+                                    remote:FireServer(
+                                        buildBigOlHutBuffer(placePos.X, placePos.Y, placePos.Z),
+                                        nil
+                                    )
+
+                                    -- Kiểm tra thực tế trong folder Deployables
+                                    verifyHutPlacement(placePos, 1.2)
+                                end
+                            else
+                                -- NẾU ĐÃ ĐẶT HUT MÀ KẺ THÙ VÀO LẠI RANGE KHI ĐANG COOLDOWN
+                                -- -> RESET THỜI GIAN ĐẾM NGƯỢC VỀ 10S
+                                lastLeftRangeTime = nil
+                            end
+                            break
+                        end
+                    end
+                end
+            end
+
+            -- XỬ LÝ ĐẾM NGƯỢC 10S KHI RỜI/RA KHỎI RANGE
+            if not enemyNearby and hasPlacedHut then
+                if not lastLeftRangeTime then
+                    -- Bắt đầu tính mốc thời gian vừa rời range
+                    lastLeftRangeTime = tick()
+                elseif tick() - lastLeftRangeTime >= HUT_COOLDOWN then
+                    -- Đã rời xa đủ 10 giây liên tục -> Hết Cooldown!
+                    hasPlacedHut = false
+                    lastLeftRangeTime = nil
+                end
+            end
+        end
+
+        task.wait(0.1)
+    end
+end
+
+local autoHutToggleObj = CombatTab:CreateToggle({
+    Name = "Auto Place Big Ol' Hut (PVP)",
+    CurrentValue = false,
+    Flag = "autoHutToggle",
+    Callback = function(v)
+        autoHutEnabled = v
+        hasPlacedHut = false
+        lastLeftRangeTime = nil
+        if autoHutTask then
+            task.cancel(autoHutTask)
+            autoHutTask = nil
+        end
+        if v then
+            autoHutTask = task.spawn(autoHutLoop)
+            Notify{ Title = "Auto Hut", Content = "Enabled", Duration = 2 }
+        else
+            Notify{ Title = "Auto Hut", Content = "Disabled", Duration = 2 }
+        end
+    end
+})
+
+CombatTab:CreateSlider({
+    Name = "Hut Activation Distance",
+    Range = {1, 8},
+    Increment = 0.5,
+    CurrentValue = 3,
+    Suffix = " studs",
+    Flag = "autoHutDistanceSlider",
+    Callback = function(v)
+        autoHutDistance = v
+    end
+})
+
+-- =============================================
 -- TAB 2: ESP
 -- =============================================
 
+-- =============================================
+-- MODIFIED ESP PLAYER (GIỐNG ESP QUẶNG)
+-- =============================================
 local playerBillboards = {}
 local playerConnections = {}
 local playerRenderConn = nil
@@ -523,7 +766,7 @@ local function createPlayerBillboard(player)
 
     local bill = Instance.new("BillboardGui")
     bill.Name = "PlayerESP"
-    bill.Size = UDim2.new(0, 250, 0, 80)
+    bill.Size = UDim2.new(0, 200, 0, 35)
     bill.Adornee = head
     bill.AlwaysOnTop = true
     bill.StudsOffset = Vector3.new(0, 2.5, 0)
@@ -535,51 +778,21 @@ local function createPlayerBillboard(player)
     bg.BorderSizePixel = 0
     bg.Parent = bill
 
-    local nameLabel = Instance.new("TextLabel")
-    nameLabel.Size = UDim2.new(1, 0, 0.35, 0)
-    nameLabel.BackgroundTransparency = 1
-    nameLabel.Text = player.Name
-    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    nameLabel.Font = Enum.Font.SourceSans
-    nameLabel.TextSize = 18
-    nameLabel.Parent = bg
-    local sn = Instance.new("UIStroke")
-    sn.Thickness = 1.5
-    sn.Color = Color3.fromRGB(0, 0, 0)
-    sn.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    sn.Parent = nameLabel
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = player.Name .. " [HP 100%] (...m)"
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.Font = Enum.Font.SourceSans
+    label.TextSize = 18
+    label.Parent = bg
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 1.5
+    stroke.Color = Color3.fromRGB(0, 0, 0)
+    stroke.Parent = label
 
-    local healthLabel = Instance.new("TextLabel")
-    healthLabel.Size = UDim2.new(1, 0, 0.3, 0)
-    healthLabel.Position = UDim2.new(0, 0, 0.35, 0)
-    healthLabel.BackgroundTransparency = 1
-    healthLabel.Text = "HP 100%"
-    healthLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-    healthLabel.Font = Enum.Font.SourceSans
-    healthLabel.TextSize = 16
-    healthLabel.Parent = bg
-    local sh = Instance.new("UIStroke")
-    sh.Thickness = 1.5
-    sh.Color = Color3.fromRGB(0, 0, 0)
-    sh.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    sh.Parent = healthLabel
-
-    local distLabel = Instance.new("TextLabel")
-    distLabel.Size = UDim2.new(1, 0, 0.35, 0)
-    distLabel.Position = UDim2.new(0, 0, 0.65, 0)
-    distLabel.BackgroundTransparency = 1
-    distLabel.Text = "0m"
-    distLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    distLabel.Font = Enum.Font.SourceSans
-    distLabel.TextSize = 14
-    distLabel.Parent = bg
-    local sd = Instance.new("UIStroke")
-    sd.Thickness = 1.5
-    sd.Color = Color3.fromRGB(0, 0, 0)
-    sd.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    sd.Parent = distLabel
-
-    playerBillboards[player] = { Bill = bill, Name = nameLabel, Health = healthLabel, Dist = distLabel }
+    playerBillboards[player] = { Bill = bill, Label = label }
 
     playerConnections[player] = player.CharacterAdded:Connect(function()
         removePlayerBillboard(player)
@@ -608,18 +821,20 @@ local function updateAllPlayers()
 
         if humanoid and root and localRoot then
             local hp = math.floor((humanoid.Health / humanoid.MaxHealth) * 100)
-            data.Health.Text = "HP " .. hp .. "%"
-            data.Health.TextColor3 = hp > 50 and Color3.fromRGB(0, 255, 0) or (hp > 25 and Color3.fromRGB(255, 255, 0) or Color3.fromRGB(255, 0, 0))
             local dist = (root.Position - localRoot.Position).Magnitude
-            data.Dist.Text = math.floor(dist) .. "m"
+            
+            -- Hiển thị định dạng: Tên [HP %] (Khoảng cách m)
+            data.Label.Text = player.Name .. " [" .. hp .. "%] (" .. math.floor(dist) .. "m)"
+            
             if espTeamColorEnabled and player.TeamColor then
-                data.Name.TextColor3 = player.TeamColor.Color
+                data.Label.TextColor3 = player.TeamColor.Color
             else
-                data.Name.TextColor3 = Color3.fromRGB(255, 255, 255)
+                data.Label.TextColor3 = Color3.fromRGB(255, 255, 255)
             end
         end
     end
 end
+-- =============================================
 
 ESPTab:CreateToggle({
     Name = "ESP Player (Name + HP + Distance)",
@@ -847,7 +1062,6 @@ ESPTab:CreateToggle({
 -- TAB 3: AUTO FARM
 -- =============================================
 
--- Safe Obstacle Avoiding Pathfinding Tween
 local function smartTween(targetCFrame, speed, checkToggle)
     local character = LocalPlayer.Character
     if not character then return false end
@@ -894,7 +1108,6 @@ local function smartTween(targetCFrame, speed, checkToggle)
             local waypoint = waypoints[i]
             local wpPos = waypoint.Position
 
-            -- Locked horizontal look direction strictly prevents any NaN Y calculations!
             local direction = (wpPos - rootPart.Position)
             local directionHorizontal = Vector3.new(direction.X, 0, direction.Z)
             local wpCFrame
@@ -939,7 +1152,6 @@ local function smartTween(targetCFrame, speed, checkToggle)
     return true
 end
 
-
 -- ======= SECTION 1: ICE CHUNK =======
 AutoFarmTab:CreateSection("Ice Chunk Farm")
 
@@ -959,7 +1171,6 @@ local chunkMonitorTask = nil
 local clickTask = nil
 local pickupTask = nil
 
--- Click indicator dot
 local clickDot = nil
 
 local function updateClickDotPosition()
@@ -1247,7 +1458,6 @@ AutoFarmTab:CreateDropdown({
     end
 })
 
--- Hotkey system
 local autoClickHotkey = Enum.KeyCode.J
 local listeningForHotkey = false
 
@@ -1354,7 +1564,7 @@ end
 local function createPlantFruitBuffer(entityID, fruitID)
     local b = buffer.create(8)
     buffer.writeu8(b, 0, 0)
-    buffer.writeu8(b, 1,85)
+    buffer.writeu8(b, 1, 85)
     buffer.writeu32(b, 2, entityID)
     buffer.writeu16(b, 6, fruitID)
     return b
@@ -1421,12 +1631,10 @@ local function plantFruitLoop()
     end
 end
 
--- Wrapper to trigger safe pathfinding tween system
 local function fruitTweenTo(targetCFrame)
     return smartTween(targetCFrame, 16, function() return fruitTweenEnabled end)
 end
 
--- Your exact modified fruitTweenToPart function that raises 5 studs for box targets
 local function fruitTweenToPart(modelPart, standDist, targetType)
     local character = LocalPlayer.Character
     if not character then return false end
@@ -1435,7 +1643,6 @@ local function fruitTweenToPart(modelPart, standDist, targetType)
 
     local modelPos = modelPart.Position
 
-    -- Raise tween target 5 studs higher if target is a box
     if targetType == "box" then
         modelPos = modelPos + Vector3.new(0, 5, 0)
     end
@@ -1707,6 +1914,369 @@ fruitTweenToggleObj = AutoFarmTab:CreateToggle({
                 fruitTweenObj = nil
             end
             Notify{ Title = "Tween Fruit Farm", Content = "Disabled", Duration = 2 }
+        end
+    end
+})
+
+-- =============================================
+-- PLACE PLANT BOX (20 BOXES GRID - FOLLOW PLAYER)
+-- =============================================
+AutoFarmTab:CreateSection("Place Plant Box")
+
+local plantBoxPreviewParts = {}
+local plantBoxScreenGui = nil
+local plantBoxGridVisible = false
+local plantBoxUpdateConn = nil
+local PLANT_BOX_SPACING = 8 -- ĐÃ ĐỔI: Khoảng cách giữa các ô = 10
+local PLANT_BOX_GRID_COLS = 5
+local PLANT_BOX_GRID_ROWS = 4
+
+-- Buffer Plant Box chuẩn 31 Bytes (Khớp 100% gói ByteNet game)
+local function buildPlantBoxBuffer(x, y, z)
+    local b = buffer.create(31)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, 68)
+    buffer.writeu8(b, 2, 9)
+    buffer.writeu8(b, 3, 0)
+
+    local name = "Plant Box"
+    for i = 1, #name do
+        buffer.writeu8(b, 3 + i, string.byte(name, i))
+    end
+
+    buffer.writef32(b, 13, x)
+    buffer.writef32(b, 17, y)
+    buffer.writef32(b, 21, z)
+
+    for i = 25, 30 do
+        buffer.writeu8(b, i, 0)
+    end
+
+    return b
+end
+
+-- Raycast xuống mặt đất tại vị trí XZ
+local function raycastGroundY(posX, posZ, ignoreChar)
+    local rayOrigin = Vector3.new(posX, 500, posZ)
+    local rayDirection = Vector3.new(0, -1000, 0)
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+
+    local ignoreList = {}
+    if ignoreChar then
+        table.insert(ignoreList, ignoreChar)
+    end
+    for _, p in ipairs(plantBoxPreviewParts) do
+        table.insert(ignoreList, p)
+    end
+    params.FilterDescendantsInstances = ignoreList
+
+    local result = workspace:Raycast(rayOrigin, rayDirection, params)
+    if result then
+        return result.Position.Y
+    end
+    return 0
+end
+
+-- Cập nhật vị trí 20 ô theo người chơi mỗi frame
+local function updatePlantBoxGridPositions()
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp or #plantBoxPreviewParts == 0 then return end
+
+    local centerPos = hrp.Position
+    local startX = centerPos.X - ((PLANT_BOX_GRID_COLS - 1) / 2) * PLANT_BOX_SPACING
+    local startZ = centerPos.Z - ((PLANT_BOX_GRID_ROWS - 1) / 2) * PLANT_BOX_SPACING
+
+    local index = 1
+    for row = 0, PLANT_BOX_GRID_ROWS - 1 do
+        for col = 0, PLANT_BOX_GRID_COLS - 1 do
+            local part = plantBoxPreviewParts[index]
+            if part and part.Parent then
+                local posX = startX + col * PLANT_BOX_SPACING
+                local posZ = startZ + row * PLANT_BOX_SPACING
+                local posY = raycastGroundY(posX, posZ, char)
+                part.Position = Vector3.new(posX, posY + 0.15, posZ)
+            end
+            index = index + 1
+        end
+    end
+end
+
+-- Xóa tất cả ô vuông preview
+local function clearPlantBoxGrid()
+    if plantBoxUpdateConn then
+        plantBoxUpdateConn:Disconnect()
+        plantBoxUpdateConn = nil
+    end
+    for _, part in ipairs(plantBoxPreviewParts) do
+        if part and part.Parent then
+            part:Destroy()
+        end
+    end
+    table.clear(plantBoxPreviewParts)
+end
+
+-- Tạo 20 ô vuông trắng xung quanh người chơi
+local function createPlantBoxGrid()
+    clearPlantBoxGrid()
+
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local centerPos = hrp.Position
+    local startX = centerPos.X - ((PLANT_BOX_GRID_COLS - 1) / 2) * PLANT_BOX_SPACING
+    local startZ = centerPos.Z - ((PLANT_BOX_GRID_ROWS - 1) / 2) * PLANT_BOX_SPACING
+
+    for row = 0, PLANT_BOX_GRID_ROWS - 1 do
+        for col = 0, PLANT_BOX_GRID_COLS - 1 do
+            local posX = startX + col * PLANT_BOX_SPACING
+            local posZ = startZ + row * PLANT_BOX_SPACING
+            local posY = raycastGroundY(posX, posZ, char)
+
+            local part = Instance.new("Part")
+            part.Name = "PlantBoxPreview_" .. (#plantBoxPreviewParts + 1)
+            part.Size = Vector3.new(3, 0.3, 3)
+            part.Position = Vector3.new(posX, posY + 0.15, posZ)
+            part.Anchored = true
+            part.CanCollide = false
+            part.CanTouch = false
+            part.CanQuery = false
+            part.CastShadow = false
+            part.Material = Enum.Material.SmoothPlastic
+            part.Color = Color3.fromRGB(255, 255, 255)
+            part.Transparency = 0.3
+            part.Parent = workspace
+
+            local selBox = Instance.new("SelectionBox")
+            selBox.Adornee = part
+            selBox.Color3 = Color3.fromRGB(0, 0, 0)
+            selBox.LineThickness = 0.02
+            selBox.Transparency = 0.5
+            selBox.Parent = part
+
+            table.insert(plantBoxPreviewParts, part)
+        end
+    end
+
+    if plantBoxUpdateConn then
+        plantBoxUpdateConn:Disconnect()
+    end
+    plantBoxUpdateConn = RunService.RenderStepped:Connect(updatePlantBoxGridPositions)
+end
+
+-- Ẩn Rayfield GUI
+local function hideRayfieldGui()
+    local guiParent = (gethui and gethui()) or game:GetService("CoreGui")
+    for _, gui in ipairs(guiParent:GetChildren()) do
+        if gui:IsA("ScreenGui") and (gui.Name:lower():find("rayfield") or gui:FindFirstChild("Main")) then
+            gui.Enabled = false
+        end
+    end
+end
+
+-- Hiện Rayfield GUI
+local function showRayfieldGui()
+    local guiParent = (gethui and gethui()) or game:GetService("CoreGui")
+    for _, gui in ipairs(guiParent:GetChildren()) do
+        if gui:IsA("ScreenGui") and (gui.Name:lower():find("rayfield") or gui:FindFirstChild("Main")) then
+            gui.Enabled = true
+        end
+    end
+end
+
+-- Xóa UI Place/Cancel
+local function removePlantBoxUI()
+    if plantBoxScreenGui then
+        plantBoxScreenGui:Destroy()
+        plantBoxScreenGui = nil
+    end
+end
+
+-- Tạo nút Place và Cancel trên màn hình
+local function createPlantBoxUI()
+    removePlantBoxUI()
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "PlantBoxControlGui"
+    screenGui.ResetOnSpawn = false
+    screenGui.IgnoreGuiInset = true
+    screenGui.DisplayOrder = 999998
+    screenGui.Parent = LocalPlayer.PlayerGui
+    plantBoxScreenGui = screenGui
+
+    local container = Instance.new("Frame")
+    container.Name = "ButtonContainer"
+    container.Size = UDim2.new(0, 320, 0, 60)
+    container.Position = UDim2.new(0.5, -160, 1, -100)
+    container.BackgroundTransparency = 1
+    container.Parent = screenGui
+
+    -- Nút PLACE
+    local placeBtn = Instance.new("TextButton")
+    placeBtn.Name = "PlaceButton"
+    placeBtn.Size = UDim2.new(0, 145, 0, 50)
+    placeBtn.Position = UDim2.new(0, 0, 0, 0)
+    placeBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 50)
+    placeBtn.Text = "PLACE"
+    placeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    placeBtn.Font = Enum.Font.GothamBold
+    placeBtn.TextSize = 20
+    placeBtn.Parent = container
+
+    local placeCorner = Instance.new("UICorner")
+    placeCorner.CornerRadius = UDim.new(0, 10)
+    placeCorner.Parent = placeBtn
+
+    local placeStroke = Instance.new("UIStroke")
+    placeStroke.Thickness = 2
+    placeStroke.Color = Color3.fromRGB(255, 255, 255)
+    placeStroke.Transparency = 0.5
+    placeStroke.Parent = placeBtn
+
+    -- Nút CANCEL
+    local cancelBtn = Instance.new("TextButton")
+    cancelBtn.Name = "CancelButton"
+    cancelBtn.Size = UDim2.new(0, 145, 0, 50)
+    cancelBtn.Position = UDim2.new(0, 175, 0, 0)
+    cancelBtn.BackgroundColor3 = Color3.fromRGB(200, 30, 30)
+    cancelBtn.Text = "CANCEL"
+    cancelBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    cancelBtn.Font = Enum.Font.GothamBold
+    cancelBtn.TextSize = 20
+    cancelBtn.Parent = container
+
+    local cancelCorner = Instance.new("UICorner")
+    cancelCorner.CornerRadius = UDim.new(0, 10)
+    cancelCorner.Parent = cancelBtn
+
+    local cancelStroke = Instance.new("UIStroke")
+    cancelStroke.Thickness = 2
+    cancelStroke.Color = Color3.fromRGB(255, 255, 255)
+    cancelStroke.Transparency = 0.5
+    cancelStroke.Parent = cancelBtn
+
+    -- Label hiển thị trạng thái
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Name = "StatusLabel"
+    statusLabel.Size = UDim2.new(0, 320, 0, 25)
+    statusLabel.Position = UDim2.new(0, 0, 0, -30)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Text = "20 Plant Boxes ready to place"
+    statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    statusLabel.Font = Enum.Font.GothamBold
+    statusLabel.TextSize = 16
+    statusLabel.Parent = container
+
+    local statusStroke = Instance.new("UIStroke")
+    statusStroke.Thickness = 1.5
+    statusStroke.Color = Color3.fromRGB(0, 0, 0)
+    statusStroke.Parent = statusLabel
+
+    -- SỰ KIỆN BẤM NÚT PLACE
+    placeBtn.Activated:Connect(function()
+        if #plantBoxPreviewParts == 0 then return end
+
+        if plantBoxUpdateConn then
+            plantBoxUpdateConn:Disconnect()
+            plantBoxUpdateConn = nil
+        end
+
+        placeBtn.Active = false
+        placeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+        placeBtn.Text = "PLACING..."
+        cancelBtn.Active = false
+        cancelBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+
+        local remote = ReplicatedStorage:FindFirstChild("ByteNetReliable")
+        if not remote then
+            if typeof(Notify) == "function" then
+                Notify{ Title = "Plant Box", Content = "ByteNetReliable not found!", Duration = 2 }
+            end
+            clearPlantBoxGrid()
+            removePlantBoxUI()
+            showRayfieldGui()
+            plantBoxGridVisible = false
+            return
+        end
+
+        local totalBoxes = #plantBoxPreviewParts
+        local placedCount = 0
+
+        for _, previewPart in ipairs(plantBoxPreviewParts) do
+            if not previewPart or not previewPart.Parent then continue end
+
+            local pos = previewPart.Position
+            local bufData = buildPlantBoxBuffer(pos.X, pos.Y, pos.Z)
+
+            pcall(function()
+                remote:FireServer(bufData, nil)
+            end)
+
+            placedCount = placedCount + 1
+
+            previewPart.Color = Color3.fromRGB(0, 200, 50)
+            previewPart.Transparency = 0.6
+
+            statusLabel.Text = "Placing... " .. placedCount .. "/" .. totalBoxes
+
+            task.wait(0.5) -- ĐÃ ĐỔI: Cooldown 0.5s giữa mỗi lần đặt
+        end
+
+        statusLabel.Text = "Done! Placed " .. placedCount .. " boxes"
+        if typeof(Notify) == "function" then
+            Notify{ Title = "Plant Box", Content = "Placed " .. placedCount .. " Plant Boxes!", Duration = 3 }
+        end
+
+        task.wait(0.8)
+        clearPlantBoxGrid()
+        removePlantBoxUI()
+        showRayfieldGui()
+        plantBoxGridVisible = false
+    end)
+
+    -- Sự kiện nút CANCEL
+    cancelBtn.Activated:Connect(function()
+        clearPlantBoxGrid()
+        removePlantBoxUI()
+        showRayfieldGui()
+        plantBoxGridVisible = false
+        if typeof(Notify) == "function" then
+            Notify{ Title = "Plant Box", Content = "Cancelled", Duration = 2 }
+        end
+    end)
+end
+
+-- Nút bấm trong Auto Farm Tab
+AutoFarmTab:CreateButton({
+    Name = "Place 20 Plant Boxes (Grid)",
+    Callback = function()
+        if plantBoxGridVisible then
+            if typeof(Notify) == "function" then
+                Notify{ Title = "Plant Box", Content = "Grid already visible!", Duration = 2 }
+            end
+            return
+        end
+
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then
+            if typeof(Notify) == "function" then
+                Notify{ Title = "Plant Box", Content = "Character not found!", Duration = 2 }
+            end
+            return
+        end
+
+        plantBoxGridVisible = true
+
+        createPlantBoxGrid()
+        hideRayfieldGui()
+        createPlantBoxUI()
+
+        if typeof(Notify) == "function" then
+            Notify{ Title = "Plant Box", Content = "Grid follows you! Press PLACE or CANCEL", Duration = 3 }
         end
     end
 })
@@ -2135,6 +2705,283 @@ SettingsTab:CreateToggle({
     end
 })
 
+-- =============================================
+-- THEME SYSTEM (FIX: dọn màu cũ + KHÔNG tô Head)
+-- =============================================
+SettingsTab:CreateSection("GUI Theme")
+
+local themeAnimationRunning = false
+local themeRenderConn = nil
+local backedUpFrames = {}
+local originalMainColor = nil
+local originalMainTrans = nil
+local themedMain = nil
+
+local function findRayfieldMain()
+    local guiParent = (gethui and gethui()) or game:GetService("CoreGui")
+    for _, gui in ipairs(guiParent:GetChildren()) do
+        if gui:IsA("ScreenGui") and (gui.Name:lower():find("rayfield") or gui:FindFirstChild("Main")) then
+            local main = gui:FindFirstChild("Main")
+            if main then return main end
+            for _, child in ipairs(gui:GetDescendants()) do
+                if child:IsA("Frame") and child.Name == "Main" then
+                    return child
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local bodyNames = {
+    ["TabList"] = true,
+    ["Elements"] = true,
+    ["Container"] = true,
+    ["Navigation"] = true,
+    ["Sidebar"] = true,
+    ["Content"] = true,
+    ["Inner"] = true,
+    ["Page"] = true,
+    ["Pages"] = true,
+}
+
+local headNames = {
+    ["Topbar"] = true,
+    ["Header"] = true,
+    ["Title"] = true,
+    ["Top"] = true,
+}
+
+local function isUnderHead(obj, main)
+    local p = obj
+    while p and p ~= main do
+        if headNames[p.Name] then
+            return true
+        end
+        p = p.Parent
+    end
+    return false
+end
+
+local function stopThemeAnimation()
+    themeAnimationRunning = false
+    if themeRenderConn then
+        themeRenderConn:Disconnect()
+        themeRenderConn = nil
+    end
+end
+
+local function clearGradient(main)
+    if not main then return end
+    local g = main:FindFirstChild("RayfieldThemeGradient")
+    if g then g:Destroy() end
+end
+
+local function restoreOriginalProperties()
+    stopThemeAnimation()
+
+    local main = themedMain or findRayfieldMain()
+    if main then
+        clearGradient(main)
+        if originalMainColor ~= nil then
+            main.BackgroundColor3 = originalMainColor
+        end
+        if originalMainTrans ~= nil then
+            main.BackgroundTransparency = originalMainTrans
+        end
+    end
+
+    for _, data in ipairs(backedUpFrames) do
+        if data.frame and data.frame.Parent then
+            data.frame.BackgroundColor3 = data.color
+            data.frame.BackgroundTransparency = data.trans
+        end
+    end
+
+    table.clear(backedUpFrames)
+    originalMainColor = nil
+    originalMainTrans = nil
+    themedMain = nil
+end
+
+local function prepareBodyForTheme(main)
+    restoreOriginalProperties()
+
+    themedMain = main
+    originalMainColor = main.BackgroundColor3
+    originalMainTrans = main.BackgroundTransparency
+
+    main.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    main.BackgroundTransparency = 0
+
+    for _, child in ipairs(main:GetDescendants()) do
+        if child:IsA("GuiObject") then
+            if isUnderHead(child, main) then
+                -- Bỏ qua phần Head
+            elseif bodyNames[child.Name] or (child:IsA("Frame") and child.BackgroundTransparency < 1 and child ~= main) then
+                if bodyNames[child.Name] then
+                    table.insert(backedUpFrames, {
+                        frame = child,
+                        color = child.BackgroundColor3,
+                        trans = child.BackgroundTransparency
+                    })
+                    child.BackgroundTransparency = 0.92
+                end
+            end
+        end
+    end
+
+    if #backedUpFrames == 0 then
+        for _, child in ipairs(main:GetChildren()) do
+            if child:IsA("GuiObject") and not headNames[child.Name] then
+                table.insert(backedUpFrames, {
+                    frame = child,
+                    color = child.BackgroundColor3,
+                    trans = child.BackgroundTransparency
+                })
+                if child:IsA("Frame") then
+                    child.BackgroundTransparency = 0.92
+                end
+            end
+        end
+    end
+
+    local gradient = Instance.new("UIGradient")
+    gradient.Name = "RayfieldThemeGradient"
+    gradient.Parent = main
+    return gradient
+end
+
+local function createScrollingGradient(colors, offset)
+    local keypoints = {}
+    local numColors = #colors
+    for i = 0, 12 do
+        local pos = i / 12
+        local samplePoint = (pos - offset) % 1
+        local exactIdx = samplePoint * numColors
+        local idx1 = math.floor(exactIdx) + 1
+        local idx2 = idx1 + 1
+        local frac = exactIdx - math.floor(exactIdx)
+        local c1 = colors[((idx1 - 1) % numColors) + 1]
+        local c2 = colors[((idx2 - 1) % numColors) + 1]
+        table.insert(keypoints, ColorSequenceKeypoint.new(pos, c1:Lerp(c2, frac)))
+    end
+    return ColorSequence.new(keypoints)
+end
+
+local function applyTheme1(main)
+    local gradient = prepareBodyForTheme(main)
+    gradient.Rotation = 90
+    local colors = {
+        Color3.fromRGB(20, 120, 255),
+        Color3.fromRGB(10, 50, 140),
+        Color3.fromRGB(5, 10, 25)
+    }
+    themeAnimationRunning = true
+    themeRenderConn = RunService.RenderStepped:Connect(function()
+        if not themeAnimationRunning then return end
+        local offset = (tick() * 0.12) % 1
+        gradient.Color = createScrollingGradient(colors, offset)
+        gradient.Offset = Vector2.new(0, 0)
+    end)
+end
+
+local function applyTheme2(main)
+    local gradient = prepareBodyForTheme(main)
+    gradient.Rotation = 90
+    local colors = {
+        Color3.fromRGB(220, 30, 30),
+        Color3.fromRGB(255, 255, 255),
+        Color3.fromRGB(160, 20, 20)
+    }
+    themeAnimationRunning = true
+    themeRenderConn = RunService.RenderStepped:Connect(function()
+        if not themeAnimationRunning then return end
+        local offset = (tick() * 0.12) % 1
+        gradient.Color = createScrollingGradient(colors, offset)
+        gradient.Offset = Vector2.new(0, 0)
+    end)
+end
+
+local function applyTheme3(main)
+    restoreOriginalProperties()
+end
+
+local function applyTheme4(main)
+    local gradient = prepareBodyForTheme(main)
+    gradient.Rotation = 45
+    themeAnimationRunning = true
+    themeRenderConn = RunService.RenderStepped:Connect(function()
+        if not themeAnimationRunning then return end
+        local offset = tick() * 0.12
+        local keypoints = {}
+        for i = 0, 12 do
+            local pos = i / 12
+            local hue = (pos - offset) % 1
+            if hue < 0 then hue = hue + 1 end
+            table.insert(keypoints, ColorSequenceKeypoint.new(pos, Color3.fromHSV(hue, 1, 1)))
+        end
+        gradient.Color = ColorSequence.new(keypoints)
+        gradient.Offset = Vector2.new(0, 0)
+    end)
+end
+
+local themeNames = {
+    "1. Ocean Blue (Xanh -> Den)",
+    "2. Red & White (Do & Trang)",
+    "3. Default (Mac dinh)",
+    "4. Rainbow (Cau vong)"
+}
+local selectedThemeName = "3. Default (Mac dinh)"
+
+local function applySelectedTheme(themeName)
+    local mainFrame = findRayfieldMain()
+    if not mainFrame then
+        Notify{ Title = "Theme", Content = "Cannot find Rayfield Main", Duration = 3 }
+        return
+    end
+
+    stopThemeAnimation()
+
+    if themeName == themeNames[1] then
+        applyTheme1(mainFrame)
+    elseif themeName == themeNames[2] then
+        applyTheme2(mainFrame)
+    elseif themeName == themeNames[3] then
+        applyTheme3(mainFrame)
+    elseif themeName == themeNames[4] then
+        applyTheme4(mainFrame)
+    end
+
+    Notify{ Title = "Theme", Content = "Applied: " .. tostring(themeName), Duration = 2 }
+end
+
+SettingsTab:CreateDropdown({
+    Name = "Select GUI Theme",
+    Options = themeNames,
+    CurrentValue = "3. Default (Mac dinh)",
+    MultiSelect = false,
+    Flag = "guiThemeDropdown",
+    Callback = function(value)
+        if type(value) == "table" then
+            selectedThemeName = value[1] or themeNames[3]
+        else
+            selectedThemeName = value
+        end
+        applySelectedTheme(selectedThemeName)
+    end
+})
+
+SettingsTab:CreateButton({
+    Name = "Refresh Theme (Apply Again)",
+    Callback = function()
+        applySelectedTheme(selectedThemeName)
+    end
+})
+
+-- =============================================
+-- CONFIGURATION
+-- =============================================
 SettingsTab:CreateSection("Configuration")
 
 local function buildConfigTable()
@@ -2174,7 +3021,10 @@ local function buildConfigTable()
         gravityToggle = gravityEnabled,
         gravityValue = gravityValue,
         zoomToggle = zoomEnabled,
-        muteNotifications = not notifyEnabled
+        muteNotifications = not notifyEnabled,
+        guiTheme = selectedThemeName,
+        autoHutToggle = autoHutEnabled,
+        autoHutDistance = autoHutDistance,
     }
 end
 
@@ -2194,20 +3044,24 @@ local function applyConfigValues(config)
     if config.healFireInterval then healFireInterval = math.clamp(tonumber(config.healFireInterval) or 0.1, 0.01, 1) end
 
     if config.autoClickHotkey then
-        local keyOk, keyVal = pcall(function()
-            return Enum.KeyCode[config.autoClickHotkey]
-        end)
+        local keyOk, keyVal = pcall(function() return Enum.KeyCode[config.autoClickHotkey] end)
         if keyOk and keyVal then
             autoClickHotkey = keyVal
-            pcall(function()
-                hotkeyButtonObj:Set("Auto Click Hotkey: " .. autoClickHotkey.Name .. " (Click to change)")
-            end)
+            pcall(function() hotkeyButtonObj:Set("Auto Click Hotkey: " .. autoClickHotkey.Name .. " (Click to change)") end)
         end
     end
 
-    if config.muteNotifications ~= nil then
-        notifyEnabled = not config.muteNotifications
+    if config.muteNotifications ~= nil then notifyEnabled = not config.muteNotifications end
+
+    if config.guiTheme then
+        selectedThemeName = config.guiTheme
+        task.spawn(function()
+            task.wait(1.5)
+            applySelectedTheme(selectedThemeName)
+        end)
     end
+
+    if config.autoHutDistance then autoHutDistance = config.autoHutDistance end
 
     local flagValues = {
         warningToggle = config.warningToggle,
@@ -2244,7 +3098,10 @@ local function applyConfigValues(config)
         gravitySlider = config.gravityValue,
         zoomToggle = config.zoomToggle,
         muteNotifications = config.muteNotifications,
-        healFireIntervalSlider = config.healFireInterval
+        healFireIntervalSlider = config.healFireInterval,
+        guiThemeDropdown = config.guiTheme,
+        autoHutToggle = config.autoHutToggle,
+        autoHutDistanceSlider = config.autoHutDistance,
     }
 
     for flag, value in pairs(flagValues) do
@@ -2261,25 +3118,12 @@ end
 SettingsTab:CreateButton({
     Name = "Save Current Config",
     Callback = function()
-        local success, encoded = pcall(function()
-            return HttpService:JSONEncode(buildConfigTable())
-        end)
-
+        local success, encoded = pcall(function() return HttpService:JSONEncode(buildConfigTable()) end)
         if success then
             if writefile then
-                local fileSuccess = pcall(function()
-                    writefile("BoogaToolsPro_SavedConfig.json", encoded)
-                end)
-                if fileSuccess then
-                    Notify{ Title = "Config", Content = "Saved successfully", Duration = 2 }
-                else
-                    Notify{ Title = "Config", Content = "Failed to save", Duration = 3 }
-                end
-            else
-                Notify{ Title = "Config", Content = "File system not supported", Duration = 3 }
+                pcall(function() writefile("BoogaToolsPro_SavedConfig.json", encoded) end)
+                Notify{ Title = "Config", Content = "Saved successfully", Duration = 2 }
             end
-        else
-            Notify{ Title = "Config", Content = "Failed to save", Duration = 3 }
         end
     end
 })
@@ -2287,28 +3131,15 @@ SettingsTab:CreateButton({
 SettingsTab:CreateButton({
     Name = "Load Saved Config",
     Callback = function()
-        if not readfile or not isfile then
-            Notify{ Title = "Config", Content = "File system not supported", Duration = 3 }
-            return
-        end
-
-        if not isfile("BoogaToolsPro_SavedConfig.json") then
-            Notify{ Title = "Config", Content = "No saved config found", Duration = 3 }
-            return
-        end
-
+        if not readfile or not isfile or not isfile("BoogaToolsPro_SavedConfig.json") then return end
         local success, config = pcall(function()
             local raw = readfile("BoogaToolsPro_SavedConfig.json")
             return HttpService:JSONDecode(raw)
         end)
-
-        if not success or not config then
-            Notify{ Title = "Config", Content = "Failed to load", Duration = 3 }
-            return
+        if success and config then
+            applyConfigValues(config)
+            Notify{ Title = "Config", Content = "Loaded successfully", Duration = 2 }
         end
-
-        applyConfigValues(config)
-        Notify{ Title = "Config", Content = "Loaded successfully", Duration = 2 }
     end
 })
 
@@ -2318,8 +3149,6 @@ SettingsTab:CreateButton({
         if delfile and isfile and isfile("BoogaToolsPro_SavedConfig.json") then
             pcall(function() delfile("BoogaToolsPro_SavedConfig.json") end)
             Notify{ Title = "Config", Content = "Deleted", Duration = 2 }
-        else
-            Notify{ Title = "Config", Content = "No config to delete", Duration = 2 }
         end
     end
 })
@@ -2329,11 +3158,8 @@ SettingsTab:CreateSection("Cleanup")
 SettingsTab:CreateButton({
     Name = "Destroy GUI and Cleanup",
     Callback = function()
-        -- Auto save before destroy
         pcall(function()
-            if writefile then
-                writefile("BoogaToolsPro_SavedConfig.json", HttpService:JSONEncode(buildConfigTable()))
-            end
+            if writefile then writefile("BoogaToolsPro_SavedConfig.json", HttpService:JSONEncode(buildConfigTable())) end
         end)
 
         if hitboxLoop then hitboxLoop:Disconnect() end
@@ -2358,68 +3184,26 @@ SettingsTab:CreateButton({
         if autoEatTask then task.cancel(autoEatTask) end
         if fruitTweenTask then task.cancel(fruitTweenTask) end
         if fruitTweenObj then fruitTweenObj:Cancel() end
+        if autoHutTask then task.cancel(autoHutTask) end
 
         if warningSound then warningSound:Stop() end
         if currentTween then currentTween:Cancel() end
         destroyZone()
         removeClickDot()
-
-        warningEnabled = false
-        hitboxActive = false
-        autoHealEnabled = false
-        autoHealV2Enabled = false
-        healRunning = false
-        healV2Running = false
-        espEnabled = false
-        espTeamColorEnabled = false
-        espOreEnabled = false
-        espGodEnabled = false
-        fullbrightEnabled = false
-        noFogEnabled = false
-        speedEnabled = false
-        climbEnabled = false
-        gravityEnabled = false
-        zoomEnabled = false
-        autoChunkEnabled = false
-        autoClickEnabled = false
-        autoPickupEnabled = false
-        pickFruitEnabled = false
-        plantFruitEnabled = false
-        autoEatEnabled = false
-        fruitTweenEnabled = false
-        fruitHomePosition = nil
+        
+        restoreOriginalProperties()
 
         clearAllPlayerBillboards()
         clearAllGodBillboards()
         clearAllOreBillboards()
-
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer then
-                local pchar = player.Character
-                if pchar then
-                    local rootPart = pchar:FindFirstChild("HumanoidRootPart")
-                    if rootPart then
-                        rootPart.Size = Vector3.new(2, 1, 1)
-                        rootPart.Transparency = 0
-                        rootPart.Color = Color3.fromRGB(255, 255, 255)
-                    end
-                end
-            end
-        end
-
-        if hum then
-            hum.WalkSpeed = 16
-            hum.MaxSlopeAngle = 46
-        end
+        
+        if hum then hum.WalkSpeed = 16 hum.MaxSlopeAngle = 46 end
         Workspace.Gravity = 196.2
         Lighting.Brightness = 0.5
         Lighting.Ambient = Color3.fromRGB(127,127,127)
         Lighting.FogEnd = 1000
         Lighting.FogStart = 0
-        pcall(function()
-            LocalPlayer.CameraMaxZoomDistance = 400
-            LocalPlayer.CameraMinZoomDistance = 1
-        end)
+        pcall(function() LocalPlayer.CameraMaxZoomDistance = 400 LocalPlayer.CameraMinZoomDistance = 1 end)
 
         Notify{ Title = "Cleanup", Content = "Complete", Duration = 2 }
         task.wait(1)
@@ -2428,19 +3212,15 @@ SettingsTab:CreateButton({
 })
 
 -- =============================================
--- CHARACTER RESET HANDLER
+-- CHARACTER RESET HANDLER & AUTO LOAD
 -- =============================================
-local function onCharacterAdded(newChar)
+LocalPlayer.CharacterAdded:Connect(function(newChar)
     char = newChar
     hum = char:WaitForChild("Humanoid")
     if speedEnabled then hum.WalkSpeed = speedValue end
     if climbEnabled then hum.MaxSlopeAngle = 90 end
-end
-LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+end)
 
--- =============================================
--- AUTO LOAD SAVED CONFIG ON START
--- =============================================
 task.spawn(function()
     task.wait(1)
 
